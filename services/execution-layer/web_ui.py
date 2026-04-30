@@ -23,6 +23,20 @@ def set_agent_registry(registry: dict):
     _agent_registry = registry
 
 
+async def _push_event(task_id: str, event: dict):
+    """向任务的所有 WebSocket 连接推送事件。"""
+    if task_id not in _active_connections:
+        return
+    dead = []
+    for ws in _active_connections[task_id]:
+        try:
+            await ws.send_json(event)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        _active_connections[task_id].remove(ws)
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index():
     """Web UI 页面"""
@@ -40,14 +54,13 @@ async def handle_execute_task(request: dict):
     if orchestrator is None:
         return {"error": "Orchestrator not initialized"}
 
-    # 异步执行任务
-    event_queue = []
-
     async def run_task():
         try:
-            result = await orchestrator.execute_task(task_id, instruction, event_queue)
+            await _push_event(task_id, {"event": "task_started", "message": "任务开始执行"})
+            await orchestrator.execute_task(task_id, instruction)
+            await _push_event(task_id, {"event": "task_completed", "task_id": task_id})
         except Exception as e:
-            event_queue.append({"event": "task_failed", "message": str(e)})
+            await _push_event(task_id, {"event": "task_failed", "message": str(e)})
 
     asyncio.create_task(run_task())
 
@@ -58,12 +71,6 @@ async def handle_execute_task(request: dict):
 async def handle_get_task_status(task_id: str):
     """GET /tasks/{task_id}/status"""
     return {"task_id": task_id, "status": "running"}
-
-
-@router.get("/tasks/{task_id}/result")
-async def handle_get_task_result(task_id: str):
-    """GET /tasks/{task_id}/result"""
-    return {"task_id": task_id, "result": "Task completed."}
 
 
 @router.websocket("/ws/tasks/{task_id}")
@@ -77,7 +84,7 @@ async def websocket_task_events(websocket: WebSocket, task_id: str):
 
     try:
         while True:
-            # 保持连接，等待事件
             await websocket.receive_text()
     except WebSocketDisconnect:
-        _active_connections[task_id].remove(websocket)
+        if task_id in _active_connections:
+            _active_connections[task_id].remove(websocket)

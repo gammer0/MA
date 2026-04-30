@@ -37,24 +37,30 @@ DEMO_KEYS = {
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理 — 初始化 Agent 实例"""
+    # 先创建 worker，再创建 orchestrator（需要 worker 引用）
+    searcher = SearcherAgent(
+        agent_id=DEMO_KEYS["searcher"]["agent_id"],
+        private_key_pem=DEMO_KEYS["searcher"]["private_key"],
+        gateway_url=GATEWAY_URL,
+    )
+    analyzer = AnalyzerAgent(
+        agent_id=DEMO_KEYS["analyzer"]["agent_id"],
+        private_key_pem=DEMO_KEYS["analyzer"]["private_key"],
+        gateway_url=GATEWAY_URL,
+    )
+    orchestrator = OrchestratorAgent(
+        agent_id=DEMO_KEYS["orchestrator"]["agent_id"],
+        private_key_pem=DEMO_KEYS["orchestrator"]["private_key"],
+        gateway_url=GATEWAY_URL,
+        searcher_id=DEMO_KEYS["searcher"]["agent_id"],
+        analyzer_id=DEMO_KEYS["analyzer"]["agent_id"],
+        searcher=searcher,
+        analyzer=analyzer,
+    )
     app.state.agents = {
-        "orchestrator": OrchestratorAgent(
-            agent_id=DEMO_KEYS["orchestrator"]["agent_id"],
-            private_key_pem=DEMO_KEYS["orchestrator"]["private_key"],
-            gateway_url=GATEWAY_URL,
-            searcher_id=DEMO_KEYS["searcher"]["agent_id"],
-            analyzer_id=DEMO_KEYS["analyzer"]["agent_id"],
-        ),
-        "searcher": SearcherAgent(
-            agent_id=DEMO_KEYS["searcher"]["agent_id"],
-            private_key_pem=DEMO_KEYS["searcher"]["private_key"],
-            gateway_url=GATEWAY_URL,
-        ),
-        "analyzer": AnalyzerAgent(
-            agent_id=DEMO_KEYS["analyzer"]["agent_id"],
-            private_key_pem=DEMO_KEYS["analyzer"]["private_key"],
-            gateway_url=GATEWAY_URL,
-        ),
+        "orchestrator": orchestrator,
+        "searcher": searcher,
+        "analyzer": analyzer,
     }
 
     set_agent_registry(app.state.agents)

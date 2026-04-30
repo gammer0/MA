@@ -24,6 +24,33 @@
 | 更新服务 | 全部 | `docker compose pull && docker compose up -d` |
 | 备份数据库 | PostgreSQL | `pg_dump > backup.sql` |
 | 恢复数据库 | PostgreSQL | `pg_restore < backup.sql` |
+| 编写/更新执行层 Agent | 执行层 | 新增或修改 Agent 代码和 Tool 实现 |
+| 向管理员移交 Agent-Tool 清单 | 执行层 | 提供当前版本的 Agent 列表和 Tool 列表，供管理员注册 |
+
+### 2.1 Agent-Tool 清单移交
+
+系统开发者部署或更新执行层后，需向权限管理员提供以下格式的清单：
+
+#### Agent 清单
+
+| Agent ID | 类型 | 说明 |
+|----------|------|------|
+| `orchestrator` | orchestrator | 编排器，调度 Worker Agent |
+| `searcher` | worker | 搜索器，负责搜索和获取网页内容 |
+| `analyzer` | worker | 分析器，负责数据计算和图表生成 |
+
+#### MCP Tool 清单
+
+| Tool Name | Owner | 说明 |
+|-----------|-------|------|
+| `file_read` | public | 读取文件（公共池） |
+| `file_write` | public | 写入文件（公共池） |
+| `web_search` | searcher | 网页搜索（searcher 自有） |
+| `page_fetch` | searcher | 获取网页内容（searcher 自有） |
+| `calc` | analyzer | 数据计算（analyzer 自有） |
+| `chart_gen` | analyzer | 图表生成（analyzer 自有） |
+
+> 管理员拿到清单后，依次调用身份注册服务接口注册 Agent 和 Tool，再到权限网关配置长期令牌。
 
 ---
 
@@ -101,6 +128,8 @@
 | 基础设施 | 环境变量配置 | ✅ | ❌ | ❌ |
 | 基础设施 | 查看服务健康 | ✅ | ❌ | ❌ |
 | 基础设施 | 查看日志 | ✅ | ❌ | ❌ |
+| 执行层 | 编写/更新 Agent 和 Tool | ✅ | ❌ | ❌ |
+| 执行层 | 移交 Agent-Tool 清单 | ✅ | ❌ | ❌ |
 | 身份管理 | Agent 注册/吊销/续期 | ❌ | ✅ | ❌ |
 | 身份管理 | Agent 查看 | ❌ | ✅ | ❌ |
 | 身份管理 | MCP 工具注册/吊销 | ❌ | ✅ | ❌ |

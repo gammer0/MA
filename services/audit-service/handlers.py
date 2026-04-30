@@ -17,8 +17,11 @@ from trace_builder import (
 router = APIRouter()
 
 
-async def get_db(request: Request) -> AsyncConnection:
-    return request.app.state.db_engine
+async def get_db(request: Request):
+    from sqlalchemy.ext.asyncio import AsyncEngine
+    engine: AsyncEngine = request.app.state.db_engine
+    async with engine.connect() as conn:
+        yield conn
 
 
 # ============================================================

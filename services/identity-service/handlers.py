@@ -55,9 +55,13 @@ router = APIRouter()
 # 依赖注入：获取数据库连接和 Redis 连接
 # ============================================================
 
-async def get_db(request: Request) -> AsyncConnection:
+from sqlalchemy.ext.asyncio import AsyncConnection as SAC, AsyncEngine
+
+async def get_db(request: Request):
     """从 app.state 获取数据库连接。"""
-    return request.app.state.db_engine
+    engine: AsyncEngine = request.app.state.db_engine
+    async with engine.connect() as conn:
+        yield conn
 
 
 async def get_redis(request: Request) -> Redis:

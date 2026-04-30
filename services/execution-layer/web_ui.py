@@ -90,6 +90,7 @@ async def handle_execute_task(request: dict):
                 await _push_event(task_id, {"event": "task_completed", "task_id": task_id})
 
             # 推送任务结果 - 使用 answer 字段
+            import json as _json
             answer = result.get("answer", "")
             summary = {
                 "steps": result.get("steps", []),

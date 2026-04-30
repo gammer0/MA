@@ -59,11 +59,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="log-list" id="log-list">等待任务执行...</div>
     </div>
   </div>
-  <div class="panel events-panel">
+  <div class="panel events-panel" style="margin-bottom:24px">
     <h2>&#128680; 安全事件</h2>
     <div id="events">等待任务执行...</div>
   </div>
+  <div class="panel">
+    <h2>&#128196; 任务结果</h2>
+    <pre class="result-pre" id="result-panel">等待任务执行...</pre>
+  </div>
 </div>
+
+<style>
+.result-pre{font-size:13px;color:#c9d1d9;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;background:#0d1117;padding:12px;border-radius:6px}
+</style>
 
 <script>
 let ws = null;
@@ -77,6 +85,7 @@ async function executeTask() {
   document.getElementById('trace-tree').innerHTML = '';
   document.getElementById('log-list').innerHTML = '';
   document.getElementById('events').innerHTML = '';
+  document.getElementById('result-panel').textContent = '等待任务执行...';
   traceNodes = [];
   logCount = 0;
 
@@ -140,6 +149,8 @@ function handleEvent(data) {
     addEvent('success', '✅ 任务完成: ' + data.task_id);
   } else if (data.event === 'audit_log') {
     showAuditLog(data.sessions || []);
+  } else if (data.event === 'task_result') {
+    document.getElementById('result-panel').textContent = data.result || '无结果';
   } else if (data.event === 'step') {
     addEvent('info', '📋 ' + data.message);
   } else if (data.event === 'step_done') {

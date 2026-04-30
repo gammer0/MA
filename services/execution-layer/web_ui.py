@@ -89,6 +89,20 @@ async def handle_execute_task(request: dict):
             if not has_deny:
                 await _push_event(task_id, {"event": "task_completed", "task_id": task_id})
 
+            # 推送任务结果摘要
+            import json as _json
+            summary = {
+                "steps": result.get("steps", []),
+                "search_done": "search" in result,
+                "analysis_done": "analysis" in result,
+                "report_done": "report" in result,
+                "analysis_detail": str(result.get("analysis", ""))[:500]
+            }
+            await _push_event(task_id, {
+                "event": "task_result",
+                "result": _json.dumps(summary, indent=2, ensure_ascii=False)
+            })
+
             # 从审计模块拉取审计日志
             try:
                 import httpx

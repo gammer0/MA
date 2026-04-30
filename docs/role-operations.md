@@ -56,7 +56,7 @@
 > ```
 > 注册结果写入 `batch_register_output.json`（含 agent_id 和 private_key_pem）。
 > 
-> **人工配置**：长期令牌包含 `allow`/`deny` 安全决策，需管理员参考 manifest 中的 `permission_hints` 手动创建。
+> **人工配置**：长期令牌包含 `allow`/`deny` 安全决策，需管理员根据系统安全策略手动创建。
 
 ---
 

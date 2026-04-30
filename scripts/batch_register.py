@@ -130,31 +130,6 @@ def main():
     print(f"\n📄 详细结果已写入: {output_path}")
     print(f"\n🔐 私钥已在 {output_path} 中，请安全保存后从文件中移除私钥！")
 
-    # ==========================================================
-    # 提示下一步
-    # ==========================================================
-    print()
-    print("=" * 60)
-    print("下一步：配置长期令牌（需人工）
-    print("=" * 60)
-    print("请参考 manifest 中的 permission_hints，在权限网关上手动创建令牌。")
-    print(f" 令牌管理接口: {args.url.replace('8001', '8002')}/tokens")
-    print()
-    if manifest.get("permission_hints"):
-        print("权限提示:")
-        for agent_id, hints in manifest["permission_hints"].items():
-            print(f"\n  [{agent_id}]")
-            if hints.get("allow_agents"):
-                print(f"    allow_agents: {hints['allow_agents']}")
-            if hints.get("allow_tools"):
-                print(f"    allow_tools: {hints['allow_tools']}")
-            if hints.get("deny_agents"):
-                print(f"    deny_agents: {hints['deny_agents']}")
-            if hints.get("deny_tools"):
-                print(f"    deny_tools: {hints['deny_tools']}")
-            if hints.get("note"):
-                print(f"    📝 {hints['note']}")
-
     if results["errors"]:
         sys.exit(1)
 

@@ -2,7 +2,15 @@ const API = '/admin';
 let agents = [], tools = [];
 let selectedAgent = null;
 let currentTokenId = null;
-let currentEntries = {}; // key: "type|id|owner" → "allow"|"deny"|null
+let currentEntries = {};
+let adminApiKey = '';
+
+function getApiKey() {
+  if (!adminApiKey) {
+    adminApiKey = document.getElementById('api-key-input').value || '';
+  }
+  return adminApiKey;
+}
 
 async function init() {
   await Promise.all([loadAgents(), loadTools()]);
@@ -201,7 +209,7 @@ async function saveToken() {
       // 创建新令牌
       const res = await fetch('/tokens', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-Admin-API-Key': prompt('请输入 Admin API Key:')},
+        headers: {'Content-Type': 'application/json', 'X-Admin-API-Key': getApiKey()},
         body: JSON.stringify({ agent_id: a.agent_id, label: `${a.agent_name} 长期令牌`, entries })
       });
       if (!res.ok) throw new Error(await res.text());
@@ -218,14 +226,14 @@ async function saveToken() {
       for (const e of existingEntries) {
         await fetch(`/tokens/${tokenId}/entries/${e.entry_id}`, {
           method: 'DELETE',
-          headers: {'X-Admin-API-Key': prompt('请输入 Admin API Key:')}
+          headers: {'X-Admin-API-Key': getApiKey()}
         });
       }
       // 添加新条目
       for (const e of entries) {
         await fetch(`/tokens/${tokenId}/entries`, {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-Admin-API-Key': prompt('请输入 Admin API Key:')},
+          headers: {'Content-Type': 'application/json', 'X-Admin-API-Key': getApiKey()},
           body: JSON.stringify(e)
         });
       }
@@ -241,7 +249,7 @@ async function revokeToken() {
   try {
     await fetch(`/tokens/${currentTokenId}`, {
       method: 'DELETE',
-      headers: {'X-Admin-API-Key': prompt('请输入 Admin API Key:')}
+      headers: {'X-Admin-API-Key': getApiKey()}
     });
     currentTokenId = null;
     currentEntries = {};

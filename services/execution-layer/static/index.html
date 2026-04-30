@@ -138,7 +138,21 @@ function handleEvent(data) {
     addEvent('error', `❌ ${data.message}`);
   } else if (data.event === 'task_failed') {
     addEvent('error', `❌ ${data.message}`);
+  } else if (data.event === 'trace_update') {
+    updateTraceNode(data);
   }
+}
+
+let traceNodes = [];
+
+function updateTraceNode(data) {
+  traceNodes.push(data);
+  let html = 'Task 调用链:\n\n';
+  traceNodes.forEach(n => {
+    const icon = n.status === 'allowed' ? '✅' : n.status === 'denied' ? '❌' : '⏳';
+    html += `${icon} ${n.caller} → ${n.target} [${n.call_type}] ${icon}\n`;
+  });
+  document.getElementById('trace-tree').textContent = html;
 }
 </script>
 </body>

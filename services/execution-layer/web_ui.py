@@ -57,8 +57,18 @@ async def handle_execute_task(request: dict):
     async def run_task():
         try:
             await _push_event(task_id, {"event": "task_started", "message": "任务开始执行"})
-            await orchestrator.execute_task(task_id, instruction)
-            await _push_event(task_id, {"event": "task_completed", "task_id": task_id})
+            result = await orchestrator.execute_task(task_id, instruction)
+            # 推送调用链
+            if result.get("trace"):
+                for step in result["trace"]:
+                    await _push_event(task_id, {
+                        "event": "trace_update",
+                        "caller": step["caller"],
+                        "target": step["target"],
+                        "call_type": step["call_type"],
+                        "status": step["status"],
+                    })
+            await _push_event(task_id, {"event": "task_completed", "task_id": task_id, "result": result})
         except Exception as e:
             await _push_event(task_id, {"event": "task_failed", "message": str(e)})
 

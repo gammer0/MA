@@ -37,7 +37,8 @@
 使用 **Ed25519**（EdDSA）：
 - 密钥长度短，签名速度快
 - 适合微服务场景的高频验签
-- Python 通过 `nacl.signing` 或 `cryptography` 库实现
+- Python 通过 `nacl.signing` 库实现
+- PEM 编码使用自定义 base64 格式（因 PyNaCl >= 1.5 移除了内置 PEMEncoder）
 
 ---
 
@@ -191,12 +192,16 @@ def sign_payload(payload: bytes, private_key_pem: str) -> str:
     Returns:
         signature_hex: str  # 十六进制字符串
     此函数在 Agent 侧 SDK 中运行。
+    内部使用自定义 base64 解码 PEM 格式私钥。
     """
 
 def verify_signature(payload: bytes, signature_hex: str, public_key_pem: str) -> bool:
     """
     使用 Ed25519 公钥验证签名。
     此函数在身份注册服务侧运行。
+    内部使用自定义 base64 解码 PEM 格式公钥。
+    Returns:
+        True if signature is valid, False otherwise.
     """
 ```
 

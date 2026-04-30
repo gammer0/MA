@@ -69,19 +69,21 @@ MA/
 │   ├── permission-gateway/                  # 权限网关
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   ├── main.py                          # FastAPI 入口
+│   │   ├── main.py                          # FastAPI 入口 + /admin UI
 │   │   ├── config.py
 │   │   ├── models.py                        # Token, TokenView, Session, PermissionRequest 等模型
 │   │   ├── token_manager.py                 # Standard Token 的 CRUD
 │   │   ├── task_permissions.py              # 任务临时权限管理
 │   │   ├── permission_requests.py           # 权限申请与审批
-│   │   ├── view_builder.py                  # 令牌视图构建（并集/交集）
+│   │   ├── view_builder.py                  # 令牌视图构建（并集/交集，支持通配符）
 │   │   ├── session_manager.py               # 会话生命周期管理
 │   │   ├── identity_client.py               # 调身份注册服务验签的 HTTP 客户端
 │   │   ├── audit_client.py                  # 向审计模块发送记录的 HTTP 客户端
-│   │   ├── handlers.py                      # API 路由
+│   │   ├── handlers.py                      # API 路由（含 /admin/agents, /admin/tools）
 │   │   ├── middleware.py                    # 拦截中间件
-│   │   └── tests/
+│   │   ├── static/                          # 权限订阅管理UI
+│   │   │   ├── admin.html
+│   │   │   └── admin.js                     # JS提取到独立文件
 │   │
 │   ├── audit-service/                       # 审计模块
 │   │   ├── Dockerfile
@@ -97,22 +99,26 @@ MA/
 │   └── execution-layer/                     # 执行层（多Agent协作示例）
 │       ├── Dockerfile
 │       ├── requirements.txt
-│       ├── main.py
+│       ├── main.py                          # FastAPI 入口（Agent初始化）
 │       ├── config.py
-│       ├── orchestrator.py                  # 编排器 Agent
+│       ├── orchestrator.py                  # 编排器 Agent（持有worker引用）
 │       ├── worker_agents/                   # Worker Agent 示例
 │       │   ├── base_worker.py
-│       │   ├── code_agent.py
-│       │   └── search_agent.py
+│       │   ├── searcher_agent.py            # 搜索器
+│       │   └── analyzer_agent.py            # 分析器
 │       ├── mcp_tools/                       # MCP 工具集示例
-│       │   ├── file_tool.py
-│       │   └── web_tool.py
-│       ├── agent_sdk/                       # Agent 签名 SDK（内嵌版，方便开发调试）
+│       │   ├── base.py                      # BaseTool 抽象
+│       │   ├── public_tools.py              # 公共池 (file_read, file_write)
+│       │   ├── searcher_tools.py            # 搜索器自有
+│       │   └── analyzer_tools.py            # 分析器自有
+│       ├── agent_sdk/                       # Agent SDK（内嵌版）
 │       │   ├── __init__.py
-│       │   └── signing_utils.py
-│       ├── interceptor.py                   # 调用拦截器（进入权限网关前）
+│       │   ├── secure_agent_client.py       # SecureAgentClient 基类
+│       │   └── signing_utils.py             # Ed25519 签名工具
 │       ├── gateway_client.py                # 调权限网关的 HTTP 客户端
-│       └── tests/
+│       ├── web_ui.py                        # Web UI + WebSocket 路由
+│       └── static/
+│           └── index.html                   # 演示控制台（四面板）
 │
 ├── agent_sdk/                               # 独立分发的 Agent SDK（正式 pip 包）
 │   ├── setup.py
@@ -204,70 +210,18 @@ http://execution-layer:8004
 
 ## 七、Docker Compose 编排
 
+> 当前开发环境将配置硬编码在 `docker-compose.yml` 中（不再依赖 `--env-file`），生产部署时需替换密码。
+
 ### `docker/docker-compose.yml`
 
 ```yaml
-version: '3.8'
-
 services:
-  # ============ 基础设施 ============
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: agent_security
       POSTGRES_USER: agent
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agent"]
-      interval: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      retries: 5
-
-  # ============ 微服务 ============
-  identity-service:
-    build: ./services/identity-service
-    ports:
-      - "8001:8001"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security
-      REDIS_URL: redis://redis:6379/0
-      ADMIN_API_KEY: ${ADMIN_API_KEY}
-      SERVICE_API_KEY: ${SERVICE_API_KEY}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  permission-gateway:
-    build: ./services/permission-gateway
-    ports:
-      - "8002:8002"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security
-      REDIS_URL: redis://redis:6379/1
-      IDENTITY_SERVICE_URL: http://identity-service:8001
-      AUDIT_SERVICE_URL: http://audit-service:8003
-      SERVICE_API_KEY: ${SERVICE_API_KEY}
-    depends_on:
-      - identity-service
-
-  audit-service:
-    build: ./services/audit-service
-    ports:
+      POSTGRES_PASSWORD: dev_password_123              # 生产环境需替换
       - "8003:8003"
     environment:
       DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security

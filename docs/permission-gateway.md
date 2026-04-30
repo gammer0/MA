@@ -12,6 +12,7 @@
 - **令牌视图构建**：单Agent视图（并集）+ 多Agent视图（交集），deny 优先
 - **会话管理**：会话与令牌视图绑定，视图缓存于 Redis
 - **调用拦截**：验签 → 自调用检查 → 视图判定 → 审计记录 → 放行/拒绝
+- **权限订阅管理 UI**：`/admin` 提供可视化点击式长期令牌配置界面，从身份注册服务拉取 Agent/Tool 列表
 
 ---
 
@@ -52,6 +53,7 @@
 - **临时权限绑定任务**：不绑定单个 Agent，属于任务的一次性权限声明
 - **deny 优先**：禁止令牌不可被 allow 覆盖
 - **白名单模式**：无匹配条目 → 隐式拒绝
+- **签名一致性**：网关与 SDK 统一使用 `json.dumps(sort_keys=True, ensure_ascii=False)` 序列化请求体，确保签名 payload 一致
 
 ---
 
@@ -207,8 +209,10 @@ async def build_multi_agent_view(conn, caller_id: str, callee_id: str,
     多 Agent 视图 = caller视图 ∩ callee视图
     
     交集逻辑：
-    - allow 条目：取双方都允许的（取交集）
+    - allow 条目：取双方都允许的（取交集），支持 "*" 通配符
     - deny 条目：任一方的 deny 直接加入最终视图（deny 优先）
+    
+    * 通配符交集规则：若 caller 的条目为 (agent, "*")，callee 的条目为 (agent, "具体ID")，则交集取 (agent, "具体ID")
     """
     caller_view = await build_agent_view(conn, caller_id, task_id)
     callee_view = await build_agent_view(conn, callee_id, task_id)
@@ -449,6 +453,16 @@ POST /tasks/{task_id}/finalize
 |------|------|------|------|
 | `POST` | `/gateway/call` | 统一 MCP/A2A 调用入口（核心拦截点） | Agent 签名 |
 | `GET` | `/sessions/{session_id}/view` | 查询会话的令牌视图 | 服务间 API Key |
+
+### 8.5 权限订阅管理 UI
+
+| 方法 | 路径 | 功能 | 认证 |
+|------|------|------|------|
+| `GET` | `/admin` | 权限订阅管理 Web UI 页面 | 无 |
+| `GET` | `/admin/agents` | 代理查询已注册 Agent 列表 | 无（内部使用 Admin Key 代理） |
+| `GET` | `/admin/tools` | 代理查询已注册 Tool 列表 | 无（内部使用 Admin Key 代理） |
+
+> 管理 UI 页面（`static/admin.html` + `admin.js`）从身份注册服务拉取 Agent/Tool 列表，提供点击式可视化长期令牌配置。JS 提取到独立文件避免内联 script 标签解析问题。
 
 ---
 

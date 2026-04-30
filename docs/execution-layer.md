@@ -8,9 +8,9 @@
 
 - 运行一个模板化的多Agent协作示例系统
 - 同时展示 MCP 直接调用、A2A 编排调度、A2A + MCP 嵌套三种模式
-- 所有调用通过 SDK 封装 → 经过权限网关（递归拦截）
-- 提供自然语言交互的 Web UI
-- 演示 6 个安全场景（正常/拒绝/申请/deny/self-call/非编排器A2A）
+- 所有调用通过 SDK 封装 → 经过权限网关（实际验证鉴权）
+- 提供自然语言交互的 Web UI（实时调用链、审计日志、安全事件、任务结果四面板）
+- 演示 6 个安全场景（已验证：正常/deny/图表生成被阻止）
 
 ---
 
@@ -454,20 +454,30 @@ class MockWebSearchTool(BaseTool):
 - 前端：纯 HTML + 原生 JavaScript（无框架）
 - 样式：内联 CSS，简洁现代
 
-### 8.2 页面结构
+### 8.2 页面结构（四个实时面板）
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  🔒 Agent 安全系统 — 多Agent协作演示控制台                 │
 ├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │  任务指令 (自然语言)                              │   │
-│  │  "搜索Python Ed25519用法，分析并生成报告"         │   │
-│  │                                        [执行任务] │   │
-│  └─────────────────────────────────────────────────┘   │
-│                                                         │
-│  ┌──────────────────────┐ ┌────────────────────────┐   │
+│  任务指令: [搜索Python Ed25519用法，分析并生成报告] [执行] │
+├──────────────────────┬──────────────────────────────────┤
+│  📝 调用链             │  🔍 审计日志                     │
+│  ✅ orch→searcher     │  02:35 ✅ orch→searcher [a2a]   │
+│  ✅ orch→analyzer     │  02:35 ✅ searcher→web [mcp]    │
+│  ❌ analyzer→chart    │  02:35 ✅ orch→analyzer [a2a]   │
+│  ✅ orch→file_write   │  02:35 ❌ analyzer→chart [mcp]  │
+├──────────────────────┴──────────────────────────────────┤
+│  🚨 安全事件                                            │
+│  🔴 analyzer的chart_gen被deny令牌阻止 (场景4)            │
+├─────────────────────────────────────────────────────────┤
+│  📄 任务结果                                            │
+│  📋 搜索完成 → 📊 分析完成（图表被安全策略阻止）           │
+│  ✅ 任务执行完毕                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+> 实际实现中 JS 提取到独立 `admin.js` 文件避免内联语法问题，WebSocket 推送事件（`trace_update`, `audit_log`, `task_result`, `task_completed`）驱动四个面板实时更新。审计日志从审计模块 API 拉取真实数据。
 │  │  任务状态             │ │  审计日志 (实时)        │   │
 │  │                      │ │                        │   │
 │  │  Task: task-001      │ │ [10:00:01] s-001 ✅    │   │
@@ -496,38 +506,31 @@ class MockWebSearchTool(BaseTool):
 |------|------|------|
 | `POST` | `/tasks/execute` | 提交自然语言任务指令，触发编排器执行 |
 | `GET` | `/tasks/{task_id}/status` | 查询任务执行状态 |
-| `GET` | `/tasks/{task_id}/result` | 获取任务执行结果 |
-| `WS` | `/ws/tasks/{task_id}` | WebSocket 实时推送执行状态和审计日志 |
+| `GET` | `/tasks/{task_id}/result` | 获取任务执行结果（当前通过 WebSocket 推送） |
+| `WS` | `/ws/tasks/{task_id}` | WebSocket 实时推送调用链、审计日志、任务结果 |
 | `GET` | `/` | Web UI 页面 |
 
 ### 8.4 WebSocket 推送事件
 
+实际使用的事件类型（简化版）：
+
 ```python
-# 事件类型
-{
-    "event": "session_update",       # 会话状态更新
-    "data": {
-        "session_id": "s-001",
-        "status": "allowed",
-        "caller": "orchestrator",
-        "target": "searcher",
-        "call_type": "a2a"
-    }
-}
+# 调用链更新
+{"event": "trace_update", "caller": "orchestrator", "target": "searcher", 
+ "call_type": "A2A", "status": "allowed"}
 
-{
-    "event": "permission_required",  # 权限不足
-    "data": {
-        "session_id": "s-005",
-        "request_id": "req-001",
-        "missing": [{"object_type": "mcp_tool", "object_id": "calc"}]
-    }
-}
+# 审计日志（从审计模块拉取）
+{"event": "audit_log", "sessions": [{"session_id": "...", "caller_agent_id": "...", ...}]}
 
-{
-    "event": "permission_approved",  # 审批通过
-    "data": {"request_id": "req-001"}
-}
+# 任务完成（含deny安全事件）
+{"event": "task_completed", "task_id": "...", 
+ "result": {"security_event": "🔴 analyzer的chart_gen被deny令牌阻止 (场景4)"}}
+
+# 任务结果
+{"event": "task_result", "result": "{\"steps\": [...], \"answer\": \"...\"}"}
+
+# 任务失败
+{"event": "task_failed", "message": "错误信息"}
 
 {
     "event": "task_completed",       # 任务完成
@@ -646,12 +649,14 @@ async def websocket_task_events(websocket: WebSocket, task_id: str):
 
 | 决策点 | 选择 | 理由 |
 |--------|------|------|
-| 调用拦截方式 | SDK 封装所有出站调用 | Agent 不直接调外部，全部经过网关 |
-| 拦截粒度 | 递归拦截 | 每个嵌套调用都经过网关 |
+| 调用拦截方式 | SDK 封装所有出站调用 | Agent 不直接调外部，全部经过网关路由，内部进程直调Worker |
+| 拦截粒度 | 网关鉴权 + 本地执行 | 调用先过网关判定，通过后在同一进程内实际调用Worker |
 | MCP 工具实现 | Mock（BaseTool 抽象） | 模板演示，Mock 与 MCP 通过统一接口保证不漂移 |
 | 工具归属 | 公共池 + 自有池 | 完整覆盖 tool_owner 的两种场景 |
 | Agent 规模 | 1 orchestrator + 2 worker | 够展示三种模式，不过度复杂 |
-| 演示场景 | 6 个安全场景 | 覆盖正常/拒绝/申请/deny/自调用/非编排器A2A |
-| Web 交互 | 自然语言 + Web UI (纯 HTML/JS) | 无前端框架依赖，保持简单 |
-| 实时推送 | WebSocket | 展示调用链实时状态和审计日志 |
-| 场景替换 | 后续替换为飞书三Agent场景 | 当前用数据收集与报告生成场景 |
+| 演示场景 | 已验证 deny硬拒绝 场景 | chart_gen被deny令牌阻止，其余5步正常放行 |
+| Web 交互 | 自然语言 + Web UI (纯 HTML/JS) | 无前端框架依赖 |
+| 实时推送 | WebSocket (5种事件类型) | trace_update/audit_log/task_completed/task_result/task_failed |
+| 前端四大面板 | 调用链+审计日志+安全事件+任务结果 | 从审计模块API拉取真实数据 |
+| Orchestrator | 进程内持有Worker引用 | call_agent过网关后直接调worker方法 |
+| JS提取 | admin.js独立文件 | 避免内联script标签解析问题 |

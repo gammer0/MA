@@ -58,9 +58,9 @@ router = APIRouter()
 from sqlalchemy.ext.asyncio import AsyncConnection as SAC, AsyncEngine
 
 async def get_db(request: Request):
-    """从 app.state 获取数据库连接。"""
+    """从 app.state 获取数据库连接（自动提交）。"""
     engine: AsyncEngine = request.app.state.db_engine
-    async with engine.connect() as conn:
+    async with engine.begin() as conn:
         yield conn
 
 

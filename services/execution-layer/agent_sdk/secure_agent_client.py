@@ -52,7 +52,7 @@ class SecureAgentClient:
             "callee_agent_id": callee_agent_id,
             "message": message,
         }
-        return await self._make_call(session_id, call_id, timestamp, request_body)
+        return await self._make_call(session_id, call_id, timestamp, request_body, parent_session_id)
 
     async def call_mcp_tool(
         self,
@@ -74,12 +74,17 @@ class SecureAgentClient:
             "tool_owner": tool_owner,
             "tool_args": tool_args,
         }
-        return await self._make_call(session_id, call_id, timestamp, request_body)
+        return await self._make_call(session_id, call_id, timestamp, request_body, parent_session_id)
 
     async def _make_call(
-        self, session_id: str, call_id: str, timestamp: str, body: dict
+        self, session_id: str, call_id: str, timestamp: str, body: dict,
+        parent_session_id: Optional[str] = None,
     ) -> dict:
         """内部：签名并调网关。"""
+        # 透传 parent_session_id 到请求体
+        if parent_session_id:
+            body["parent_session_id"] = parent_session_id
+
         body_json = json.dumps(body)
         body_bytes = body_json.encode("utf-8")
 

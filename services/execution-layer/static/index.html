@@ -90,9 +90,7 @@ async function executeTask() {
     connectWebSocket(taskId);
     addLog('info', '任务已启动: ' + taskId);
     addEvent('info', '任务已启动: ' + instruction);
-
-    // 模拟轮询展示审计日志
-    startSimulatedLogs(taskId);
+    addEvent('warn', '⏳ 等待任务执行结果...');
   } catch(e) {
     addEvent('error', '任务启动失败: ' + e.message);
   }
@@ -107,34 +105,12 @@ function connectWebSocket(taskId) {
     const data = JSON.parse(e.data);
     handleEvent(data);
   };
-}
-
-function startSimulatedLogs(taskId) {
-  const sessions = [
-    { sid: 's-001', caller: 'orchestrator', target: 'searcher', type: 'A2A', decision: 'allowed' },
-    { sid: 's-002', caller: 'searcher', target: 'web_search', type: 'MCP(自有)', decision: 'allowed' },
-    { sid: 's-003', caller: 'searcher', target: 'page_fetch', type: 'MCP(自有)', decision: 'allowed' },
-    { sid: 's-004', caller: 'orchestrator', target: 'analyzer', type: 'A2A', decision: 'allowed' },
-    { sid: 's-005', caller: 'analyzer', target: 'calc', type: 'MCP(自有)', decision: 'allowed' },
-    { sid: 's-006', caller: 'analyzer', target: 'searcher', type: 'A2A(非编排器)', decision: 'allowed' },
-    { sid: 's-007', caller: 'analyzer', target: 'chart_gen', type: 'MCP(自有)', decision: 'denied' },
-    { sid: 's-008', caller: 'orchestrator', target: 'file_write', type: 'MCP(公共)', decision: 'allowed' },
-  ];
-
-  let i = 0;
-  const interval = setInterval(() => {
-    if (i >= sessions.length) { clearInterval(interval); return; }
-    const s = sessions[i];
-    addLog(s.decision, `[${new Date().toLocaleTimeString()}] ${s.sid}: ${s.caller} → ${s.target} (${s.type}) ${s.decision === 'allowed' ? '✅' : '❌'}`);
-    updateTrace(sessions.slice(0, i + 1));
-    if (s.sid === 's-007') {
-      addEvent('error', `🔴 ${s.sid}: analyzer→chart_gen 被deny令牌阻止 (can_request: false)`);
-    }
-    if (s.sid === 's-006') {
-      addEvent('success', `🟢 ${s.sid}: analyzer→searcher 非编排器A2A 放行`);
-    }
-    i++;
-  }, 800);
+  ws.onclose = () => {
+    addLog('info', 'WebSocket 连接已关闭');
+  };
+  ws.onerror = () => {
+    addEvent('error', 'WebSocket 连接错误');
+  };
 }
 
 function addLog(cls, msg) {
@@ -151,23 +127,17 @@ function addEvent(cls, msg) {
   document.getElementById('events').appendChild(div);
 }
 
-function updateTrace(sessions) {
-  let html = 'Task 调用链:\n\n';
-  sessions.forEach(s => {
-    const prefix = s.sid.startsWith('s-00') && s.sid !== 's-001' && s.sid !== 's-004' ? '  ' : '';
-    html += `${prefix}${s.sid}: ${s.caller} → ${s.target} [${s.type}] ${s.decision === 'allowed' ? '✅' : '❌'}\n`;
-  });
-  html += '\n📋 安全场景演示:\n';
-  html += '  场景1: orchestrator→searcher ✅ 正常A2A调度\n';
-  html += '  场景2: searcher→web_search ✅ 正常MCP自有工具\n';
-  html += '  场景4: analyzer→chart_gen ❌ deny硬拒绝\n';
-  html += '  场景6: analyzer→searcher ✅ 非编排器A2A\n';
-  document.getElementById('trace-tree').textContent = html;
-}
-
 function handleEvent(data) {
   if (data.event === 'task_completed') {
     addEvent('success', '✅ 任务完成: ' + data.task_id);
+  } else if (data.event === 'step') {
+    addEvent('info', `📋 ${data.message}`);
+  } else if (data.event === 'step_done') {
+    addEvent('success', `✅ ${data.message}`);
+  } else if (data.event === 'step_failed') {
+    addEvent('error', `❌ ${data.message}`);
+  } else if (data.event === 'task_failed') {
+    addEvent('error', `❌ ${data.message}`);
   }
 }
 </script>

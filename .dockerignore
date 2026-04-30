@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.conda/
+.pytest_cache/
+
+# 环境
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# 文档(不需要打入镜像)
+docs/
+*.md
+
+# 测试(不需要打入镜像)
+tests/
+
+# 脚本(不需要打入镜像)
+scripts/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml

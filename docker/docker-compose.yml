@@ -1,0 +1,95 @@
+services:
+
+  # ============ 基础设施 ============
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agent_security
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ../scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent"]
+      interval: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============ 微服务 ============
+  identity-service:
+    build:
+      context: ../services/identity-service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+      SERVICE_API_KEY: ${SERVICE_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  permission-gateway:
+    build:
+      context: ../services/permission-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security
+      REDIS_URL: redis://redis:6379/1
+      IDENTITY_SERVICE_URL: http://identity-service:8001
+      AUDIT_SERVICE_URL: http://audit-service:8003
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+      SERVICE_API_KEY: ${SERVICE_API_KEY}
+    depends_on:
+      - identity-service
+    restart: unless-stopped
+
+  audit-service:
+    build:
+      context: ../services/audit-service
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+      SERVICE_API_KEY: ${SERVICE_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  execution-layer:
+    build:
+      context: ../services/execution-layer
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      GATEWAY_URL: http://permission-gateway:8002
+    depends_on:
+      - permission-gateway
+    restart: unless-stopped
+
+volumes:
+  pg_data:

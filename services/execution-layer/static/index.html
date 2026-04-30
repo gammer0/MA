@@ -130,6 +130,13 @@ function addEvent(cls, msg) {
 
 function handleEvent(data) {
   if (data.event === 'task_completed') {
+    if (data.result && data.result.security_event) {
+      addEvent('error', data.result.security_event);
+      addEvent('info', `  图表结果: ${data.result.chart_result}`);
+      if (data.result.supplement && data.result.supplement !== '无') {
+        addEvent('success', `🟢 非编排器A2A analyzer→searcher 放行 (场景6)`);
+      }
+    }
     addEvent('success', '✅ 任务完成: ' + data.task_id);
   } else if (data.event === 'step') {
     addEvent('info', `📋 ${data.message}`);

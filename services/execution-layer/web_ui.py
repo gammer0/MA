@@ -68,7 +68,25 @@ async def handle_execute_task(request: dict):
                         "call_type": step["call_type"],
                         "status": step["status"],
                     })
-            await _push_event(task_id, {"event": "task_completed", "task_id": task_id, "result": result})
+            # 检查 analyzer 内部是否有 deny 事件
+            if result.get("analysis"):
+                analysis = result["analysis"]
+                # 如果分析结果中包含 chart 相关的 deny 信息
+                if isinstance(analysis, dict):
+                    chart = analysis.get("chart", "")
+                    supplement = analysis.get("supplement", "")
+                    if isinstance(chart, str) and "denied" in chart.lower():
+                        await _push_event(task_id, {
+                            "event": "task_completed", "task_id": task_id,
+                            "result": {
+                                "security_event": "🔴 analyzer的chart_gen被deny令牌阻止 (场景4: deny硬拒绝)",
+                                "chart_result": chart,
+                                "supplement": supplement if supplement else "无"
+                            }
+                        })
+                        return
+
+            await _push_event(task_id, {"event": "task_completed", "task_id": task_id})
         except Exception as e:
             await _push_event(task_id, {"event": "task_failed", "message": str(e)})
 

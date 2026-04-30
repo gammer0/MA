@@ -5,6 +5,12 @@ from agent_sdk.secure_agent_client import SecureAgentClient, PermissionDeniedErr
 class OrchestratorAgent(SecureAgentClient):
     """编排器 Agent — 调度 Worker Agent 完成任务"""
 
+    def __init__(self, agent_id: str, private_key_pem: str, gateway_url: str,
+                 searcher_id: str = "searcher", analyzer_id: str = "analyzer"):
+        super().__init__(agent_id, private_key_pem, gateway_url)
+        self.searcher_id = searcher_id
+        self.analyzer_id = analyzer_id
+
     async def execute_task(self, task_id: str, instruction: str) -> dict:
         """解析指令、制定计划、调度执行、finalize 任务。"""
         result = {"task_id": task_id, "instruction": instruction, "steps": [], "trace": []}
@@ -20,7 +26,7 @@ class OrchestratorAgent(SecureAgentClient):
             try:
                 add_trace("orchestrator", "searcher", "A2A", "pending")
                 search_result = await self.call_agent(
-                    callee_agent_id="searcher",
+                    callee_agent_id=self.searcher_id,
                     message={"action": "search", "query": instruction},
                     task_id=task_id,
                 )
@@ -36,7 +42,7 @@ class OrchestratorAgent(SecureAgentClient):
             try:
                 add_trace("orchestrator", "analyzer", "A2A", "pending")
                 analysis = await self.call_agent(
-                    callee_agent_id="analyzer",
+                    callee_agent_id=self.analyzer_id,
                     message={"action": "analyze", "data": result.get("search", {})},
                     task_id=task_id,
                 )

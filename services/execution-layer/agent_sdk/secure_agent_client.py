@@ -90,7 +90,7 @@ class SecureAgentClient:
         if parent_session_id:
             body["parent_session_id"] = parent_session_id
 
-        body_json = json.dumps(body)
+        body_json = json.dumps(body, sort_keys=True, ensure_ascii=False)
         body_bytes = body_json.encode("utf-8")
 
         # 构造 payload 并签名

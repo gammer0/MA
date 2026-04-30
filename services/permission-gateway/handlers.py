@@ -491,7 +491,8 @@ async def handle_gateway_call(
         raise HTTPException(status_code=400, detail="Missing X-Agent-Id")
 
     # ② 身份验证
-    request_body = request.model_dump_json()
+    # 使用json.dumps保证与SDK端完全一致的序列化（包括key顺序和空字段）
+    request_body = json.dumps(request.model_dump(), sort_keys=True, ensure_ascii=False)
     verified = await verify_signature(
         agent_id=agent_id,
         session_id=session_id,

@@ -1,0 +1,27 @@
+"""审计模块 - 认证中间件"""
+from fastapi import Request, HTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from config import ADMIN_API_KEY, SERVICE_API_KEY
+
+
+class ServiceAPIKeyMiddleware(BaseHTTPMiddleware):
+    """服务间调用的 API Key 认证中间件。"""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/audit/") and request.method == "POST":
+            api_key = request.headers.get("X-Service-API-Key", "")
+            if api_key != SERVICE_API_KEY:
+                raise HTTPException(status_code=401, detail="Invalid service API key")
+        return await call_next(request)
+
+
+class AdminAPIKeyMiddleware(BaseHTTPMiddleware):
+    """管理查询接口的 API Key 认证中间件。"""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/audit/") and request.method == "GET":
+            api_key = request.headers.get("X-Admin-API-Key", "")
+            if api_key != ADMIN_API_KEY:
+                raise HTTPException(status_code=401, detail="Invalid admin API key")
+        return await call_next(request)

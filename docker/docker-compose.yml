@@ -4,9 +4,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: agent_security
-      POSTGRES_USER: agent
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: agent_security                      # 数据库名
+      POSTGRES_USER: agent                             # 数据库用户
+      POSTGRES_PASSWORD: dev_password_123              # 数据库密码（生产环境需替换）
     ports:
       - "5432:5432"
     volumes:
@@ -36,10 +36,10 @@ services:
     ports:
       - "8001:8001"
     environment:
-      DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security
-      REDIS_URL: redis://redis:6379/0
-      ADMIN_API_KEY: ${ADMIN_API_KEY}
-      SERVICE_API_KEY: ${SERVICE_API_KEY}
+      DATABASE_URL: postgresql+asyncpg://agent:dev_password_123@postgres:5432/agent_security
+      REDIS_URL: redis://redis:6379/0                   # Redis DB 0: 公钥缓存
+      ADMIN_API_KEY: admin-secret-key-dev               # 管理接口密钥（生产环境需替换）
+      SERVICE_API_KEY: service-secret-key-dev           # 服务间调用密钥（生产环境需替换）
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,12 +54,12 @@ services:
     ports:
       - "8002:8002"
     environment:
-      DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security
-      REDIS_URL: redis://redis:6379/1
-      IDENTITY_SERVICE_URL: http://identity-service:8001
-      AUDIT_SERVICE_URL: http://audit-service:8003
-      ADMIN_API_KEY: ${ADMIN_API_KEY}
-      SERVICE_API_KEY: ${SERVICE_API_KEY}
+      DATABASE_URL: postgresql+asyncpg://agent:dev_password_123@postgres:5432/agent_security
+      REDIS_URL: redis://redis:6379/1                   # Redis DB 1: 令牌视图缓存
+      IDENTITY_SERVICE_URL: http://identity-service:8001  # 身份注册服务地址
+      AUDIT_SERVICE_URL: http://audit-service:8003        # 审计模块地址
+      ADMIN_API_KEY: admin-secret-key-dev               # 管理接口密钥（生产环境需替换）
+      SERVICE_API_KEY: service-secret-key-dev           # 服务间调用密钥（生产环境需替换）
     depends_on:
       - identity-service
     restart: unless-stopped
@@ -71,9 +71,9 @@ services:
     ports:
       - "8003:8003"
     environment:
-      DATABASE_URL: postgresql+asyncpg://agent:${PG_PASSWORD}@postgres:5432/agent_security
-      ADMIN_API_KEY: ${ADMIN_API_KEY}
-      SERVICE_API_KEY: ${SERVICE_API_KEY}
+      DATABASE_URL: postgresql+asyncpg://agent:dev_password_123@postgres:5432/agent_security
+      ADMIN_API_KEY: admin-secret-key-dev               # 管理接口密钥（生产环境需替换）
+      SERVICE_API_KEY: service-secret-key-dev           # 服务间调用密钥（生产环境需替换）
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +86,7 @@ services:
     ports:
       - "8004:8004"
     environment:
-      GATEWAY_URL: http://permission-gateway:8002
+      GATEWAY_URL: http://permission-gateway:8002        # 权限网关地址
     depends_on:
       - permission-gateway
     restart: unless-stopped

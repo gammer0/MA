@@ -162,10 +162,10 @@ async function loadExistingTokens(agentId) {
 
 function renderConfigPanel() {
   const a = selectedAgent;
-  // 分组工具
+  // 分组工具（tool_owner 是 agent_name 字符串）
   const publicTools = tools.filter(t => t.tool_owner === 'public');
-  const ownTools = tools.filter(t => t.tool_owner === a.agent_id);
-  const otherTools = tools.filter(t => t.tool_owner !== 'public' && t.tool_owner !== a.agent_id);
+  const ownTools = tools.filter(t => t.tool_owner === a.agent_name);
+  const otherTools = tools.filter(t => t.tool_owner !== 'public' && t.tool_owner !== a.agent_name);
   // 其他 Agent
   const otherAgents = agents.filter(ag => ag.agent_id !== a.agent_id);
 

@@ -69,13 +69,14 @@ async def handle_execute_task(request: dict):
                         "status": step["status"],
                     })
             # 检查 analyzer 内部是否有 deny 事件
+            has_deny = False
             if result.get("analysis"):
                 analysis = result["analysis"]
-                # 如果分析结果中包含 chart 相关的 deny 信息
                 if isinstance(analysis, dict):
                     chart = analysis.get("chart", "")
                     supplement = analysis.get("supplement", "")
                     if isinstance(chart, str) and "denied" in chart.lower():
+                        has_deny = True
                         await _push_event(task_id, {
                             "event": "task_completed", "task_id": task_id,
                             "result": {
@@ -84,9 +85,26 @@ async def handle_execute_task(request: dict):
                                 "supplement": supplement if supplement else "无"
                             }
                         })
-                        return
 
-            await _push_event(task_id, {"event": "task_completed", "task_id": task_id})
+            if not has_deny:
+                await _push_event(task_id, {"event": "task_completed", "task_id": task_id})
+
+            # 从审计模块拉取审计日志
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=10) as c:
+                    resp = await c.get(
+                        f"http://audit-service:8003/audit/tasks/{task_id}/sessions",
+                        headers={"X-Admin-API-Key": "admin-secret-key-dev"}
+                    )
+                    if resp.status_code == 200:
+                        audit_data = resp.json()
+                        await _push_event(task_id, {
+                            "event": "audit_log",
+                            "sessions": audit_data.get("sessions", [])
+                        })
+            except Exception:
+                pass
         except Exception as e:
             await _push_event(task_id, {"event": "task_failed", "message": str(e)})
 

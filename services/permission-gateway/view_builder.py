@@ -84,7 +84,7 @@ async def build_multi_agent_view(
                 seen_deny.add(key)
                 final_deny.append(e)
 
-    # allow 条目取交集
+    # allow 条目取交集（支持通配符 "*"）
     caller_allow = set()
     for e in caller_view.entries:
         if e.effect == TokenEffect.allow:
@@ -95,7 +95,19 @@ async def build_multi_agent_view(
         if e.effect == TokenEffect.allow:
             callee_allow.add((e.object_type.value, e.object_id, e.tool_owner))
 
-    intersection = caller_allow & callee_allow
+    intersection = set()
+    for ct, ci, co in caller_allow:
+        for ct2, ci2, co2 in callee_allow:
+            if ct != ct2:
+                continue
+            if co != co2:
+                continue
+            # object_id 匹配（包括通配符）
+            if ci == "*" or ci2 == "*" or ci == ci2:
+                # 取具体的那个
+                resolved_id = ci2 if ci == "*" else ci
+                intersection.add((ct, resolved_id, co))
+                break
 
     final_entries = list(final_deny)
     for obj_type, obj_id, tool_owner in intersection:

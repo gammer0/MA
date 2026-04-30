@@ -116,7 +116,7 @@ function renderConfigPanel() {
 
     <div class="token-summary">
       <h3>📋 当前令牌配置预览</h3>
-      <pre>${buildTokenPreview() || '(空 — 所有调用将被拒绝)}</pre>
+      <pre>${buildTokenPreview() || '(未配置 — 所有调用将被拒绝)'}</pre>
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="saveToken()">💾 保存令牌</button>

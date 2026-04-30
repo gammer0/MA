@@ -20,16 +20,16 @@ from worker_agents.analyzer_agent import AnalyzerAgent
 # 演示用密钥（实际应从身份注册服务注册获取）
 DEMO_KEYS = {
     "orchestrator": {
-        "agent_id": "orchestrator",
-        "private_key": "MC4CAQAwBQYDK2VwBCIEINTv8qL5TbVfZQmP2xHNkHnJ7WrXsLqM3yVwBhRtF9Gk",
+        "agent_id": "3b3333ee-a17d-4ffb-a373-d52f91e09a5d",
+        "private_key": "-----BEGIN PRIVATE KEY-----\naS/sIqoYKr09JbW1m+2XAwDgKIJRjM+6TRTwrmpbRBQ=\n-----END PRIVATE KEY-----\n",
     },
     "searcher": {
-        "agent_id": "searcher",
-        "private_key": "MC4CAQAwBQYDK2VwBCIEIO2LpX8mYrRtVeUqNwFoPiEbMsCpPlHkSjzA0cDwDqNM",
+        "agent_id": "fea00823-4bf1-4b7e-8fe1-6f69b844f54b",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nD/G1GDx5hoNgKXZ8gRhfSwKFu8k1ipWHDMQR+k/yqRM=\n-----END PRIVATE KEY-----\n",
     },
     "analyzer": {
-        "agent_id": "analyzer",
-        "private_key": "MC4CAQAwBQYDK2VwBCIEIExV5nJ2yKqRfTpWgHo3sCDLmA7qFtBvS9zNuMxEGpLM",
+        "agent_id": "d1476ffa-0157-4685-9127-59790abba03c",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nc/A7SQ4OqRsV4HokDYOnR6W8yWDGIr73VqdT5H9SIAE=\n-----END PRIVATE KEY-----\n",
     },
 }
 

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 from redis.asyncio import Redis
 
-from config import MAX_TEMP_PERMISSION_TTL, VIEW_CACHE_TTL
+from config import MAX_TEMP_PERMISSION_TTL, VIEW_CACHE_TTL, IDENTITY_SERVICE_URL, ADMIN_API_KEY
 from models import (
     StandardToken, TokenEntry, TokenEffect, ObjectType, TokenStatus,
     TaskPermissionEntry, PermissionSource, CallType, SessionStatus,
@@ -639,3 +639,37 @@ async def handle_get_session_view(
         entries=view.entries,
         built_at=view.built_at,
     )
+
+
+# ============================================================
+# 权限订阅管理 UI
+# ============================================================
+
+@router.get("/admin/agents")
+async def handle_admin_list_agents():
+    """GET /admin/agents — 代理到身份注册服务获取 Agent 列表"""
+    import httpx
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                f"{IDENTITY_SERVICE_URL}/agents",
+                headers={"X-Admin-API-Key": ADMIN_API_KEY},
+            )
+            return resp.json()
+        except Exception:
+            return []
+
+
+@router.get("/admin/tools")
+async def handle_admin_list_tools():
+    """GET /admin/tools — 代理到身份注册服务获取 Tool 列表"""
+    import httpx
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                f"{IDENTITY_SERVICE_URL}/tools",
+                headers={"X-Admin-API-Key": ADMIN_API_KEY},
+            )
+            return resp.json()
+        except Exception:
+            return []

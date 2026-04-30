@@ -49,6 +49,9 @@ class SecureAgentClient:
         request_body = {
             "call_type": "a2a",
             "task_id": task_id,
+            "tool_name": "",
+            "tool_owner": "",
+            "tool_args": {},
             "callee_agent_id": callee_agent_id,
             "message": message,
         }
@@ -73,6 +76,8 @@ class SecureAgentClient:
             "tool_name": tool_name,
             "tool_owner": tool_owner,
             "tool_args": tool_args,
+            "callee_agent_id": "",
+            "message": {},
         }
         return await self._make_call(session_id, call_id, timestamp, request_body, parent_session_id)
 

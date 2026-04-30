@@ -1,0 +1,54 @@
+{
+    "version": "1.0.0",
+    "description": "数据收集与报告生成 - 三Agent协作系统",
+    "agents": [
+        {
+            "agent_name": "orchestrator",
+            "agent_type": "orchestrator",
+            "owner": "data-team"
+        },
+        {
+            "agent_name": "searcher",
+            "agent_type": "worker",
+            "owner": "data-team"
+        },
+        {
+            "agent_name": "analyzer",
+            "agent_type": "worker",
+            "owner": "data-team"
+        }
+    ],
+    "tools": [
+        {"tool_name": "file_read",  "tool_owner": "public",    "description": "读取文件"},
+        {"tool_name": "file_write", "tool_owner": "public",    "description": "写入文件"},
+        {"tool_name": "web_search", "tool_owner": "searcher",  "description": "网页搜索"},
+        {"tool_name": "page_fetch", "tool_owner": "searcher",  "description": "获取网页内容"},
+        {"tool_name": "calc",       "tool_owner": "analyzer",  "description": "数据计算"},
+        {"tool_name": "chart_gen",  "tool_owner": "analyzer",  "description": "图表生成"}
+    ],
+    "permission_hints": {
+        "orchestrator": {
+            "allow_agents": ["searcher", "analyzer"],
+            "allow_tools": [{"tool_name": "*", "tool_owner": "public"}],
+            "deny_agents": ["orchestrator"],
+            "note": "编排器可调所有worker和公共工具，禁止自调用"
+        },
+        "searcher": {
+            "allow_tools": [
+                {"tool_name": "*", "tool_owner": "searcher"},
+                {"tool_name": "file_read", "tool_owner": "public"}
+            ],
+            "note": "搜索器仅可调自有工具+公共只读"
+        },
+        "analyzer": {
+            "allow_agents": ["searcher"],
+            "allow_tools": [
+                {"tool_name": "*", "tool_owner": "analyzer"},
+                {"tool_name": "file_read", "tool_owner": "public"}
+            ],
+            "deny_tools": [{"tool_name": "chart_gen", "tool_owner": "analyzer"}],
+            "note": "分析器可调自有工具+searcher(非编排器A2A)，但chart_gen被禁止(演示场景4)"
+        }
+    },
+    "permission_note": "permission_hints 仅供参考，令牌配置仍需人工审批后通过权限网关管理接口执行"
+}

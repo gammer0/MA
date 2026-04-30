@@ -50,7 +50,13 @@
 | `calc` | analyzer | 数据计算（analyzer 自有） |
 | `chart_gen` | analyzer | 图表生成（analyzer 自有） |
 
-> 管理员拿到清单后，依次调用身份注册服务接口注册 Agent 和 Tool，再到权限网关配置长期令牌。
+> **自动化注册**：管理员拿到清单后，使用 `scripts/batch_register.py` 一键完成所有 Agent 和 Tool 的注册。
+> ```
+> python batch_register.py --manifest agent_tool_manifest.json --api-key "xxx" --url http://localhost:8001
+> ```
+> 注册结果写入 `batch_register_output.json`（含 agent_id 和 private_key_pem）。
+> 
+> **人工配置**：长期令牌包含 `allow`/`deny` 安全决策，需管理员参考 manifest 中的 `permission_hints` 手动创建。
 
 ---
 
@@ -71,6 +77,7 @@
 | 查看 MCP 工具 | `GET` | `/tools/{tool_id}` | 查看工具详情 |
 | 列出 MCP 工具 | `GET` | `/tools?owner=public` | 按属主过滤 |
 | 吊销 MCP 工具 | `POST` | `/tools/{tool_id}/revoke` | 软删除 |
+| 批量注册 Agent+Tool | 脚本 | `python batch_register.py --manifest agent_tool_manifest.json` | 一键自动化注册 |
 
 ### 3.2 令牌管理（权限网关 :8002）
 

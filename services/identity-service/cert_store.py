@@ -1,4 +1,5 @@
 """身份注册服务 - Agent 证书 PostgreSQL 存储层"""
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -29,7 +30,7 @@ async def store_agent_cert(conn: AsyncConnection, agent: AgentRecord) -> None:
             "issued_at": agent.issued_at,
             "expires_at": agent.expires_at,
             "revoked_at": agent.revoked_at,
-            "metadata": agent.metadata,
+            "metadata": json.dumps(agent.metadata),
             "created_at": agent.created_at,
             "updated_at": agent.updated_at,
         },
@@ -144,7 +145,19 @@ def _row_to_agent_record(row) -> AgentRecord:
         issued_at=row.issued_at,
         expires_at=row.expires_at,
         revoked_at=row.revoked_at,
-        metadata=row.metadata or {},
+        metadata=_parse_json(row.metadata),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def _parse_json(val):
+    """安全解析 JSON，失败返回空字典。"""
+    if val is None:
+        return {}
+    if isinstance(val, dict):
+        return val
+    try:
+        return json.loads(val) if isinstance(val, str) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}

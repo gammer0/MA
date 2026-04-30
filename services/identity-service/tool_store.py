@@ -1,4 +1,5 @@
 """身份注册服务 - MCP 工具 PostgreSQL 存储层"""
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -22,7 +23,7 @@ async def store_tool(conn: AsyncConnection, tool: ToolRecord) -> None:
             "tool_name": tool.tool_name,
             "tool_owner": tool.tool_owner,
             "description": tool.description,
-            "tool_schema": tool.tool_schema,
+            "tool_schema": json.dumps(tool.tool_schema),
             "status": tool.status.value,
             "registered_at": tool.registered_at,
             "revoked_at": tool.revoked_at,
@@ -103,12 +104,19 @@ async def update_tool_status(
 
 def _row_to_tool_record(row) -> ToolRecord:
     """将数据库行转换为 ToolRecord。"""
+    import json as _json
+    schema = row.tool_schema
+    if isinstance(schema, str):
+        try:
+            schema = _json.loads(schema)
+        except (_json.JSONDecodeError, TypeError):
+            schema = {}
     return ToolRecord(
         id=str(row.id),
         tool_name=row.tool_name,
         tool_owner=row.tool_owner,
         description=row.description or "",
-        tool_schema=row.tool_schema or {},
+        tool_schema=schema or {},
         status=ToolStatus(row.status),
         registered_at=row.registered_at,
         revoked_at=row.revoked_at,

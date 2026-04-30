@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 安全系统 - 多Agent协作演示控制台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d1117;color:#c9d1d9;min-height:100vh}
+.header{background:#161b22;border-bottom:1px solid #30363d;padding:16px 24px;display:flex;align-items:center;gap:12px}
+.header h1{font-size:20px;color:#58a6ff}
+.header span{font-size:13px;color:#8b949e}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.input-area{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin-bottom:24px}
+.input-area label{display:block;font-size:14px;color:#8b949e;margin-bottom:8px}
+.input-area input{width:100%;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:14px;outline:none}
+.input-area input:focus{border-color:#58a6ff}
+.input-area button{margin-top:12px;padding:10px 24px;background:#238636;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer}
+.input-area button:hover{background:#2ea043}
+.input-area button:disabled{opacity:.5;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.panel{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px}
+.panel h2{font-size:16px;color:#58a6ff;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #30363d}
+.trace-tree{font-family:'Cascadia Code',monospace;font-size:13px;line-height:1.8;white-space:pre}
+.trace-tree .allowed{color:#3fb950}
+.trace-tree .denied{color:#f85149}
+.trace-tree .pending{color:#d29922}
+.log-list{max-height:400px;overflow-y:auto}
+.log-item{padding:6px 0;font-size:13px;border-bottom:1px solid #21262d;display:flex;gap:8px}
+.log-item .time{color:#8b949e;white-space:nowrap}
+.log-item .allowed{color:#3fb950}
+.log-item .denied{color:#f85149}
+.events-panel{margin-top:24px}
+.event-item{padding:8px 12px;margin:4px 0;border-radius:6px;font-size:13px}
+.event-item.info{background:#1f2937;border-left:3px solid #58a6ff}
+.event-item.success{background:#1a2332;border-left:3px solid #3fb950}
+.event-item.error{background:#2d1b1b;border-left:3px solid #f85149}
+.event-item.warn{background:#2d2514;border-left:3px solid #d29922}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>&#128274; Agent 安全系统</h1>
+  <span>多Agent协作演示控制台</span>
+</div>
+<div class="container">
+  <div class="input-area">
+    <label>任务指令 (自然语言)</label>
+    <input type="text" id="instruction" value="搜索Python Ed25519用法，分析并生成报告" placeholder="输入任务指令...">
+    <button id="btn-execute" onclick="executeTask()">执行任务</button>
+  </div>
+  <div class="grid">
+    <div class="panel">
+      <h2>&#128221; 调用链</h2>
+      <div class="trace-tree" id="trace-tree">等待任务执行...</div>
+    </div>
+    <div class="panel">
+      <h2>&#128269; 审计日志</h2>
+      <div class="log-list" id="log-list">等待任务执行...</div>
+    </div>
+  </div>
+  <div class="panel events-panel">
+    <h2>&#128680; 安全事件</h2>
+    <div id="events">等待任务执行...</div>
+  </div>
+</div>
+
+<script>
+let ws = null;
+let logCount = 0;
+
+async function executeTask() {
+  const instruction = document.getElementById('instruction').value;
+  const btn = document.getElementById('btn-execute');
+  btn.disabled = true;
+  btn.textContent = '执行中...';
+  document.getElementById('trace-tree').innerHTML = '';
+  document.getElementById('log-list').innerHTML = '';
+  document.getElementById('events').innerHTML = '';
+  logCount = 0;
+
+  try {
+    const res = await fetch('/tasks/execute', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({instruction})
+    });
+    const data = await res.json();
+    const taskId = data.task_id;
+    connectWebSocket(taskId);
+    addLog('info', '任务已启动: ' + taskId);
+    addEvent('info', '任务已启动: ' + instruction);
+
+    // 模拟轮询展示审计日志
+    startSimulatedLogs(taskId);
+  } catch(e) {
+    addEvent('error', '任务启动失败: ' + e.message);
+  }
+  btn.disabled = false;
+  btn.textContent = '执行任务';
+}
+
+function connectWebSocket(taskId) {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${protocol}//${location.host}/ws/tasks/${taskId}`);
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    handleEvent(data);
+  };
+}
+
+function startSimulatedLogs(taskId) {
+  const sessions = [
+    { sid: 's-001', caller: 'orchestrator', target: 'searcher', type: 'A2A', decision: 'allowed' },
+    { sid: 's-002', caller: 'searcher', target: 'web_search', type: 'MCP(自有)', decision: 'allowed' },
+    { sid: 's-003', caller: 'searcher', target: 'page_fetch', type: 'MCP(自有)', decision: 'allowed' },
+    { sid: 's-004', caller: 'orchestrator', target: 'analyzer', type: 'A2A', decision: 'allowed' },
+    { sid: 's-005', caller: 'analyzer', target: 'calc', type: 'MCP(自有)', decision: 'allowed' },
+    { sid: 's-006', caller: 'analyzer', target: 'searcher', type: 'A2A(非编排器)', decision: 'allowed' },
+    { sid: 's-007', caller: 'analyzer', target: 'chart_gen', type: 'MCP(自有)', decision: 'denied' },
+    { sid: 's-008', caller: 'orchestrator', target: 'file_write', type: 'MCP(公共)', decision: 'allowed' },
+  ];
+
+  let i = 0;
+  const interval = setInterval(() => {
+    if (i >= sessions.length) { clearInterval(interval); return; }
+    const s = sessions[i];
+    addLog(s.decision, `[${new Date().toLocaleTimeString()}] ${s.sid}: ${s.caller} → ${s.target} (${s.type}) ${s.decision === 'allowed' ? '✅' : '❌'}`);
+    updateTrace(sessions.slice(0, i + 1));
+    if (s.sid === 's-007') {
+      addEvent('error', `🔴 ${s.sid}: analyzer→chart_gen 被deny令牌阻止 (can_request: false)`);
+    }
+    if (s.sid === 's-006') {
+      addEvent('success', `🟢 ${s.sid}: analyzer→searcher 非编排器A2A 放行`);
+    }
+    i++;
+  }, 800);
+}
+
+function addLog(cls, msg) {
+  const div = document.createElement('div');
+  div.className = 'log-item';
+  div.innerHTML = `<span class="${cls}">${msg}</span>`;
+  document.getElementById('log-list').appendChild(div);
+}
+
+function addEvent(cls, msg) {
+  const div = document.createElement('div');
+  div.className = `event-item ${cls}`;
+  div.textContent = msg;
+  document.getElementById('events').appendChild(div);
+}
+
+function updateTrace(sessions) {
+  let html = 'Task 调用链:\n\n';
+  sessions.forEach(s => {
+    const prefix = s.sid.startsWith('s-00') && s.sid !== 's-001' && s.sid !== 's-004' ? '  ' : '';
+    html += `${prefix}${s.sid}: ${s.caller} → ${s.target} [${s.type}] ${s.decision === 'allowed' ? '✅' : '❌'}\n`;
+  });
+  html += '\n📋 安全场景演示:\n';
+  html += '  场景1: orchestrator→searcher ✅ 正常A2A调度\n';
+  html += '  场景2: searcher→web_search ✅ 正常MCP自有工具\n';
+  html += '  场景4: analyzer→chart_gen ❌ deny硬拒绝\n';
+  html += '  场景6: analyzer→searcher ✅ 非编排器A2A\n';
+  document.getElementById('trace-tree').textContent = html;
+}
+
+function handleEvent(data) {
+  if (data.event === 'task_completed') {
+    addEvent('success', '✅ 任务完成: ' + data.task_id);
+  }
+}
+</script>
+</body>
+</html>

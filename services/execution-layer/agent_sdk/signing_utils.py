@@ -1,8 +1,16 @@
 """Agent SDK - Ed25519 签名工具"""
 import json
 import hashlib
+import base64
 from nacl.signing import SigningKey
-from nacl.encoding import PEMEncoder
+
+
+def _private_key_from_pem(pem_str: str) -> SigningKey:
+    body = pem_str.replace("-----BEGIN PRIVATE KEY-----", "")
+    body = body.replace("-----END PRIVATE KEY-----", "")
+    body = body.replace("\n", "").replace("\r", "")
+    raw = base64.b64decode(body)
+    return SigningKey(raw)
 
 
 def build_session_signature_payload(
@@ -32,6 +40,6 @@ def build_session_signature_payload(
 
 def sign_payload(payload: bytes, private_key_pem: str) -> str:
     """使用 Ed25519 私钥签名，返回十六进制字符串。"""
-    signing_key = SigningKey(private_key_pem, encoder=PEMEncoder)
+    signing_key = _private_key_from_pem(private_key_pem)
     signed = signing_key.sign(payload)
     return signed.signature.hex()

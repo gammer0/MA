@@ -73,8 +73,6 @@ async def lifespan(app: FastAPI):
         agent_id=keys["orchestrator"]["agent_id"] or "orchestrator",
         private_key_pem=keys["orchestrator"]["private_key"],
         gateway_url=GATEWAY_URL,
-        searcher_id=keys["searcher"]["agent_id"] or "searcher",
-        analyzer_id=keys["analyzer"]["agent_id"] or "analyzer",
         searcher=searcher,
         analyzer=analyzer,
     )

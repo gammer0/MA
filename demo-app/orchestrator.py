@@ -6,13 +6,18 @@ class OrchestratorAgent(SecureAgentClient):
     """编排器 Agent — 调度 Worker Agent 完成任务"""
 
     def __init__(self, agent_id: str, private_key_pem: str, gateway_url: str,
-                 searcher_id: str = "searcher", analyzer_id: str = "analyzer",
                  searcher=None, analyzer=None):
         super().__init__(agent_id, private_key_pem, gateway_url)
-        self.searcher_id = searcher_id
-        self.analyzer_id = analyzer_id
         self._searcher = searcher
         self._analyzer = analyzer
+
+    @property
+    def searcher_id(self):
+        return self._searcher.agent_id if self._searcher else "searcher"
+
+    @property
+    def analyzer_id(self):
+        return self._analyzer.agent_id if self._analyzer else "analyzer"
 
     async def execute_task(self, task_id: str, instruction: str) -> dict:
         """解析指令、制定计划、调度执行、finalize 任务。"""

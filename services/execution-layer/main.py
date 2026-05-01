@@ -127,4 +127,7 @@ async def admin_inject_keys(request: Request):
                 agent.agent_id = keys[name]["agent_id"]
                 agent._private_key = keys[name]["private_key"]
 
+    # 用后即焚：清除全局变量中的私钥，仅保留在 agent 实例中
+    inject_keys({})
+
     return {"status": "ok", "message": f"Keys injected for {list(body.keys())}"}

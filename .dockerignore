@@ -35,3 +35,5 @@ scripts/
 Dockerfile
 .dockerignore
 docker-compose*.yml
+
+飞书API使用文档.md

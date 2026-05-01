@@ -92,5 +92,19 @@ services:
       - permission-gateway
     restart: unless-stopped
 
+  feishu-demo-app:
+    build:
+      context: ../feishu-demo-app                       # 飞书演示项目
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      GATEWAY_URL: http://permission-gateway:8002
+      ADMIN_API_KEY: admin-secret-key-dev
+    command: python3 -m uvicorn main:app --host 0.0.0.0 --port 8005
+    depends_on:
+      - permission-gateway
+    restart: unless-stopped
+
 volumes:
   pg_data:

@@ -404,16 +404,18 @@ function setApprovalMode(mode) {
   refreshPendingRequests();
 }
 
+let pendingRequestsCache = [];
+
 async function refreshPendingRequests() {
   try {
     const r = await fetch('/admin/pending-requests');
-    const requests = await r.json();
+    pendingRequestsCache = await r.json();
     const el = document.getElementById('pending-list');
-    if (!requests.length) {
+    if (!pendingRequestsCache.length) {
       el.innerHTML = '<div class="empty">暂无待审批请求</div>';
       return;
     }
-    el.innerHTML = requests.map(req => `
+    el.innerHTML = pendingRequestsCache.map(req => `
       <div class="pending-item" id="req-${req.request_id}">
         <div class="pending-header">
           <span>🔔 ${req.agent_id.substring(0,8)}...</span>
@@ -433,24 +435,29 @@ async function refreshPendingRequests() {
 async function approveRequest(reqId, taskId) {
   const apiKey = getApiKey();
   if (!apiKey) return;
+  // 从缓存中找到请求的 entries
+  const cached = pendingRequestsCache.find(r => r.request_id === reqId);
+  if (!cached) return;
   const action = approvalMode === 'auto' ? 'auto_approve' : 'approve';
   try {
-    // 先获取请求详情拿到 entries
-    const detail = await fetch(`/tasks/${taskId}/permission-requests/${reqId}`);
-    const req = await detail.json();
     const r = await fetch(`/tasks/${taskId}/permission-requests/${reqId}/approve`, {
       method: 'POST',
       headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
       body: JSON.stringify({
         action: action,
-        approved_entries: req.requested_entries || [],
-        ttl_seconds: req.requested_ttl || 300,
+        approved_entries: cached.requested_entries || [],
+        ttl_seconds: cached.requested_ttl || 300,
         comment: action === 'auto_approve' ? '[降级] 自动批准' : '管理员批准'
       })
     });
     if (r.ok) {
       showToast('已批准' + (action === 'auto_approve' ? ' [降级]' : ''), 'success');
-      document.getElementById('req-' + reqId).remove();
+      const el = document.getElementById('req-' + reqId);
+      if (el) el.remove();
+      pendingRequestsCache = pendingRequestsCache.filter(r => r.request_id !== reqId);
+    } else {
+      const err = await r.text();
+      showToast('操作失败: ' + err.substring(0,100), 'error');
     }
   } catch(e) { showToast('操作失败: ' + e.message, 'error'); }
 }

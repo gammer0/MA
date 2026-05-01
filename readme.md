@@ -8,7 +8,7 @@
 
 ## 目录
 
-- [快速演示（5 分钟）](#快速演示5-分钟)
+- [快速演示（10 分钟）](#快速演示10-分钟)
 - [功能边界](#功能边界)
 - [系统架构](#系统架构)
 - [权限模型详解](#权限模型详解)
@@ -23,17 +23,32 @@
 
 ---
 
-## 快速演示（5 分钟）
+## 快速演示（10 分钟）
 
 演示场景：飞书中有三个 AI Agent —— 文档助手（reporter）、企业数据 Agent（data_agent）、外部检索 Agent（search_agent）。文档助手生成周报时委托另两个 Agent 查数据，但 search_agent 无权访问飞书企业数据（会被拦截）。
 
-### 环境要求
+### 前置准备
 
 - Docker Desktop（含 Docker Compose）
 - Python 3.12+
-- `lark-cli`（飞书 CLI 工具，可选）
+- `lark-cli`（飞书 CLI 工具，可选；如需真实飞书数据则必须）
 
-### 第 1 步：启动安全内核
+> **⚠️ 飞书 CLI 配置提醒**：如果希望飞书工具（日历/通讯录/多维表格/文档）返回真实数据而非 mock 结果，需提前安装并登录 `lark-cli`：
+> ```bash
+> npm install -g lark-cli                        # 安装
+> lark-cli config init                           # 初始化配置
+> lark-cli auth login                            # 登录飞书账号
+> ```
+> 如未配置 `lark-cli`，飞书工具调用将返回 `lark-cli 未安装` 错误，但不影响权限拦截演示。
+
+### 第 1 步：配置环境变量
+
+```bash
+cp .env.example .env
+# 编辑 .env，填入你的 LLM_API_KEY、FEISHU_APP_ID、FEISHU_APP_SECRET
+```
+
+### 第 2 步：启动安全内核
 
 ```bash
 cd docker
@@ -47,7 +62,7 @@ docker compose ps
 # 应看到 postgres、redis、identity-service、permission-gateway、audit-service 均为 healthy/running
 ```
 
-### 第 2 步：注册 Agent 身份
+### 第 3 步：注册 Agent 身份
 
 ```bash
 cd ..
@@ -62,7 +77,7 @@ python scripts/batch_register.py \
 - 注册 6 个 MCP 工具（lark_doc、lark_base、lark_contact、lark_calendar、web_search、page_fetch）
 - 自动将 Agent 私钥热注入到执行层（:8005）
 
-### 第 3 步：启动飞书演示应用
+### 第 4 步：启动飞书演示应用
 
 ```bash
 cd feishu-demo-app
@@ -70,11 +85,11 @@ python main.py
 # 输出: Uvicorn running on http://0.0.0.0:8005
 ```
 
-### 第 4 步：配置令牌（权限规则）
+### 第 5 步：配置令牌（权限规则）
 
 打开 **权限网关管理 UI**：`http://localhost:8002/admin`
 
-#### 4a. 为 data_agent 创建长期令牌（允许被调用 + 使用飞书工具）
+#### 5a. 为 data_agent 创建长期令牌（允许被调用 + 使用飞书工具）
 
 在「🔑 令牌订阅」面板：
 - Agent：选择 `data_agent`
@@ -86,7 +101,7 @@ python main.py
   - `allow mcp_tool lark_calendar data_agent` （允许日历）
 - 点击「创建令牌」
 
-#### 4b. 为 search_agent 创建长期令牌（仅公开搜索 + 明确拒绝飞书）
+#### 5b. 为 search_agent 创建长期令牌（仅公开搜索 + 明确拒绝飞书）
 
 - Agent：选择 `search_agent`
 - 标签：`外部检索 Agent 标准权限`
@@ -97,7 +112,7 @@ python main.py
   - **`deny mcp_tool lark_base data_agent`** （拒绝访问飞书多维表格）
 - 点击「创建令牌」
 
-#### 4c. 为 reporter 创建长期令牌
+#### 5c. 为 reporter 创建长期令牌
 
 - Agent：选择 `reporter`
 - 标签：`文档助手标准权限`
@@ -107,7 +122,7 @@ python main.py
   - `allow mcp_tool lark_doc reporter` （允许创建飞书文档）
 - 点击「创建令牌」
 
-### 第 5 步：执行任务验证
+### 第 6 步：执行任务验证
 
 打开 `http://localhost:8005`，在输入框中输入：
 

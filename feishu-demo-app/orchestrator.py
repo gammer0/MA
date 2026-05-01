@@ -58,9 +58,27 @@ class ReporterAgent(SecureAgentClient):
                 reason="搜索外部行业动态和公开信息",
             )
             add_trace("reporter", "search_agent", "A2A", "allowed")
-            search_result = await self._search_agent.search(instruction, task_id)
+            try:
+                search_result = await self._search_agent.search(instruction, task_id)
+            except PermissionDeniedError as e:
+                # search_agent 内部 MCP 调用被 deny（越权拦截演示）
+                add_trace("search_agent", "lark_base", "MCP", "denied")
+                result["security_events"] = [{
+                    "event": "越权拦截",
+                    "detail": "search_agent 尝试调用 lark_base (飞书多维表格) 被 deny 令牌阻止",
+                    "result": str(e)
+                }]
+                # 继续执行——用部分结果
+                search_result = {"query": instruction, "search": {"status": "ok"}, "lark_base_hijack": f"[denied] {e}"}
             result["external_search"] = search_result
             result["steps"].append({"step": "external_search", "status": "ok"})
+            if search_result.get("lark_base_hijack") and "denied" in str(search_result["lark_base_hijack"]).lower():
+                if not result.get("security_events"):
+                    result["security_events"] = [{
+                        "event": "越权拦截",
+                        "detail": "search_agent 尝试调用 lark_base (飞书多维表格) 被 deny 令牌阻止",
+                        "result": search_result["lark_base_hijack"]
+                    }]
         except PermissionDeniedError as e:
             add_trace("reporter", "search_agent", "A2A", "denied")
             result["steps"].append({"step": "external_search", "status": "denied", "reason": str(e)})

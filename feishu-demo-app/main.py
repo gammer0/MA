@@ -27,14 +27,51 @@ _runtime_keys: dict = {}
 def inject_keys(keys: dict):
     global _runtime_keys
     _runtime_keys = keys
+    # 直接更新 app.state.agents 中的实例（lifespan 之后有效）
+    if hasattr(app.state, "agents"):
+        for name, agent in app.state.agents.items():
+            if name in keys:
+                agent.agent_id = keys[name]["agent_id"]
+                agent._private_key = keys[name]["private_key"]
 
 
 def _get_keys():
     return _runtime_keys if _runtime_keys else DEMO_KEYS
 
 
+def _init_lark_cli():
+    """自动配置 lark-cli 飞书凭证（从环境变量）。"""
+    import subprocess, json
+
+    app_id = os.getenv("FEISHU_APP_ID", "")
+    app_secret = os.getenv("FEISHU_APP_SECRET", "")
+
+    if not app_id or not app_secret:
+        print("[lark-cli] 缺少 FEISHU_APP_ID/FEISHU_APP_SECRET，跳过自动配置")
+        return
+
+    try:
+        # 写入 lark-cli 配置文件
+        config = {
+            "app_id": app_id,
+            "app_secret": app_secret,
+            "domain": "feishu",
+        }
+        config_path = os.path.expanduser("~/.config/lark-cli/config.json")
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        with open(config_path, "w") as f:
+            json.dump(config, f)
+        print(f"[lark-cli] 配置文件已写入: {config_path}")
+        print(f"[lark-cli] App ID: {app_id[:8]}...")
+    except Exception as e:
+        print(f"[lark-cli] 自动配置失败: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 自动配置 lark-cli（从环境变量注入飞书凭证）
+    _init_lark_cli()
+
     keys = _get_keys()
     data_agent = DataAgent(
         agent_id=keys["data_agent"]["agent_id"] or "data_agent",
@@ -79,13 +116,6 @@ async def admin_inject_keys(request: Request):
         if "private_key" in body[name]:
             body[name]["private_key"] = body[name]["private_key"].replace("\\n", "\n")
     inject_keys(body)
-    if hasattr(app.state, "agents"):
-        keys = _get_keys()
-        for name, agent in app.state.agents.items():
-            if name in keys:
-                agent.agent_id = keys[name]["agent_id"]
-                agent._private_key = keys[name]["private_key"]
-    inject_keys({})
     return {"status": "ok"}
 
 
@@ -142,3 +172,8 @@ async def ws_task(websocket: WebSocket, task_id: str):
 async def index():
     html_path = Path(__file__).parent / "static" / "index.html"
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8005)

@@ -100,9 +100,17 @@ function addEvent(cls, msg) {
 function showResult(r) {
   const traceEl = document.getElementById('trace-panel');
   if (r.trace) {
-    traceEl.innerHTML = r.trace.map(t =>
-      `<div class="trace-line ${t.status}">${t.status==='allowed'?'✅':'❌'} ${t.caller} → ${t.target} [${t.call_type}] ${t.status}</div>`
-    ).join('');
+    traceEl.innerHTML = r.trace.map(t => {
+      const icon = t.status === 'allowed' ? '✅' : (t.status === 'denied' ? '🔴' : '⏳');
+      return `<div class="trace-line ${t.status}">${icon} ${t.caller} → ${t.target} [${t.call_type}] ${t.status}</div>`;
+    }).join('');
+  }
+  // 显示安全事件（deny 拦截）
+  if (r.security_events) {
+    r.security_events.forEach(e => {
+      addEvent('error', '🔴 ' + e.detail);
+      addEvent('info', '   ' + e.result);
+    });
   }
   addEvent('success', '✅ 任务完成: ' + r.task_id);
   addEvent('info', '📋 管理员可在权限管理页面通过 Task ID 查询完整审计日志');

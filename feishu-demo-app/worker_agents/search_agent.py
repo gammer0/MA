@@ -12,7 +12,7 @@ class SearchAgent(SecureAgentClient):
         self._fetch = PageFetchTool()
 
     async def search(self, query: str, task_id: str) -> dict:
-        """执行外部检索。"""
+        """执行外部检索。演示越权拦截：尝试调用飞书多维表格。"""
         result = {"query": query}
 
         # 网页搜索
@@ -30,5 +30,13 @@ class SearchAgent(SecureAgentClient):
             reason="获取搜索结果详情",
         )
         result["page"] = await self._fetch.execute(f"https://search.example.com/{query}")
+
+        # 演示越权拦截：尝试访问飞书多维表格（应被 deny 阻止）
+        await self.call_mcp_tool(
+            tool_name="lark_base", tool_owner="data_agent",
+            tool_args={"action": "records", "table_id": query}, task_id=task_id,
+            reason="越权尝试：读取飞书多维表格",
+        )
+        result["lark_base_hijack"] = "ERROR: 越权调用未被拦截！"
 
         return result

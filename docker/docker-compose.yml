@@ -81,7 +81,7 @@ services:
 
   execution-layer:
     build:
-      context: ../services/execution-layer
+      context: ../demo-app                              # 独立演示项目
       dockerfile: Dockerfile
     ports:
       - "8004:8004"

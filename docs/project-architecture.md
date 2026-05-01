@@ -86,39 +86,21 @@ MA/
 │   │   │   └── admin.js                     # JS提取到独立文件
 │   │
 │   ├── audit-service/                       # 审计模块
-│   │   ├── Dockerfile
-│   │   ├── requirements.txt
-│   │   ├── main.py
-│   │   ├── config.py
-│   │   ├── models.py                        # SignatureRecord, SessionLog 等
-│   │   ├── log_store.py                     # 日志持久化（PG）
-│   │   ├── trace_builder.py                 # 调用链建模
-│   │   ├── handlers.py                      # 写入/查询 API
+│   │   ├── Dockerfile, requirements.txt
+│   │   ├── main.py, config.py, models.py
+│   │   ├── log_store.py, trace_builder.py
+│   │   ├── handlers.py, middleware.py
 │   │   └── tests/
-│   │
-│   └── execution-layer/                     # 执行层（多Agent协作示例）
-│       ├── Dockerfile
-│       ├── requirements.txt
-│       ├── main.py                          # FastAPI 入口（Agent初始化）
-│       ├── config.py
-│       ├── orchestrator.py                  # 编排器 Agent（持有worker引用）
-│       ├── worker_agents/                   # Worker Agent 示例
-│       │   ├── base_worker.py
-│       │   ├── searcher_agent.py            # 搜索器
-│       │   └── analyzer_agent.py            # 分析器
-│       ├── mcp_tools/                       # MCP 工具集示例
-│       │   ├── base.py                      # BaseTool 抽象
-│       │   ├── public_tools.py              # 公共池 (file_read, file_write)
-│       │   ├── searcher_tools.py            # 搜索器自有
-│       │   └── analyzer_tools.py            # 分析器自有
-│       ├── agent_sdk/                       # Agent SDK（内嵌版）
-│       │   ├── __init__.py
-│       │   ├── secure_agent_client.py       # SecureAgentClient 基类
-│       │   └── signing_utils.py             # Ed25519 签名工具
-│       ├── gateway_client.py                # 调权限网关的 HTTP 客户端
-│       ├── web_ui.py                        # Web UI + WebSocket 路由
-│       └── static/
-│           └── index.html                   # 演示控制台（四面板）
+│
+├── demo-app/                                # 独立演示项目（非安全内核部分）
+│   ├── Dockerfile, requirements.txt
+│   ├── main.py                              # FastAPI入口(零硬编码,依赖热注入)
+│   ├── config.py, orchestrator.py
+│   ├── worker_agents/                       # searcher, analyzer
+│   ├── mcp_tools/                           # 6个Mock工具
+│   ├── agent_sdk/                           # Agent SDK内嵌版
+│   ├── web_ui.py, gateway_client.py
+│   └── static/index.html                    # 演示控制台（四面板）
 │
 ├── agent_sdk/                               # 独立分发的 Agent SDK（正式 pip 包）
 │   ├── setup.py

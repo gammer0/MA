@@ -131,10 +131,10 @@ def main():
     print(f"\n🔐 私钥已在 {output_path} 中，请安全保存后从文件中移除私钥！")
 
     # ==========================================================
-    # 直接注入到执行层（不经过文件落盘）
+    # 直接注入到执行层(demo-app) — 不经过文件落盘
     # ==========================================================
     if results["agents"] and not results["errors"]:
-        exec_url = args.url.replace("8001", "8004")
+        exec_url = args.url.replace("8001", "8004")  # demo-app 端口
         payload = {}
         for agent in results["agents"]:
             name = agent["agent_name"]

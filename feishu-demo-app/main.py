@@ -10,94 +10,67 @@ from fastapi.responses import HTMLResponse
 from pathlib import Path
 
 from config import GATEWAY_URL
+from agent_registry import AgentRegistry
 from orchestrator import ReporterAgent
 from worker_agents.data_agent import DataAgent
 from worker_agents.search_agent import SearchAgent
 
-# Agent 凭证（默认值，启动后通过 /admin/keys 注入）
-DEMO_KEYS = {
-    "reporter": {"agent_id": "", "private_key": ""},
-    "data_agent": {"agent_id": "", "private_key": ""},
-    "search_agent": {"agent_id": "", "private_key": ""},
-}
-
-_runtime_keys: dict = {}
-
-
-def inject_keys(keys: dict):
-    global _runtime_keys
-    _runtime_keys = keys
-    # 直接更新 app.state.agents 中的实例（lifespan 之后有效）
-    if hasattr(app.state, "agents"):
-        for name, agent in app.state.agents.items():
-            if name in keys:
-                agent.agent_id = keys[name]["agent_id"]
-                agent._private_key = keys[name]["private_key"]
-
-
-def _get_keys():
-    return _runtime_keys if _runtime_keys else DEMO_KEYS
+# Agent 注册中心（密钥热注入封装于此）
+registry = AgentRegistry(gateway_url=GATEWAY_URL)
 
 
 def _init_lark_cli():
     """自动配置 lark-cli 飞书凭证（从环境变量）。"""
-    import subprocess, json
-
+    import json as _json
     app_id = os.getenv("FEISHU_APP_ID", "")
     app_secret = os.getenv("FEISHU_APP_SECRET", "")
-
     if not app_id or not app_secret:
-        print("[lark-cli] 缺少 FEISHU_APP_ID/FEISHU_APP_SECRET，跳过自动配置")
         return
-
     try:
-        # 写入 lark-cli 配置文件
-        config = {
-            "app_id": app_id,
-            "app_secret": app_secret,
-            "domain": "feishu",
-        }
         config_path = os.path.expanduser("~/.config/lark-cli/config.json")
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, "w") as f:
-            json.dump(config, f)
+            _json.dump({"app_id": app_id, "app_secret": app_secret, "domain": "feishu"}, f)
         print(f"[lark-cli] 配置文件已写入: {config_path}")
-        print(f"[lark-cli] App ID: {app_id[:8]}...")
     except Exception as e:
         print(f"[lark-cli] 自动配置失败: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 自动配置 lark-cli（从环境变量注入飞书凭证）
     _init_lark_cli()
 
-    keys = _get_keys()
-    data_agent = DataAgent(
-        agent_id=keys["data_agent"]["agent_id"] or "data_agent",
-        private_key_pem=keys["data_agent"]["private_key"],
-        gateway_url=GATEWAY_URL,
-    )
-    search_agent = SearchAgent(
-        agent_id=keys["search_agent"]["agent_id"] or "search_agent",
-        private_key_pem=keys["search_agent"]["private_key"],
-        gateway_url=GATEWAY_URL,
-    )
-    reporter = ReporterAgent(
-        agent_id=keys["reporter"]["agent_id"] or "reporter",
-        private_key_pem=keys["reporter"]["private_key"],
-        gateway_url=GATEWAY_URL,
-        data_agent=data_agent,
-        search_agent=search_agent,
-    )
-    app.state.agents = {"reporter": reporter, "data_agent": data_agent, "search_agent": search_agent}
+    # 注册 Agent 类型（不创建实例，等密钥注入）
+    registry.register("reporter", ReporterAgent, data_agent=None, search_agent=None)
+    registry.register("data_agent", DataAgent)
+    registry.register("search_agent", SearchAgent)
+
+    # 如果有环境变量密钥，立即注入
+    env_keys = {}
+    for name in ["reporter", "data_agent", "search_agent"]:
+        aid = os.getenv(f"AGENT_{name.upper()}_ID", "")
+        pk = os.getenv(f"AGENT_{name.upper()}_PRIVATE_KEY", "")
+        if aid and pk:
+            env_keys[name] = {"agent_id": aid, "private_key": pk.replace("\\n", "\n")}
+    if env_keys:
+        registry.inject_keys(env_keys)
+
+    # 注入 reporter 的依赖
+    data_agent = registry.get("data_agent")
+    search_agent = registry.get("search_agent")
+    if data_agent and search_agent:
+        reporter = registry.get("reporter")
+        if reporter:
+            reporter._data_agent = data_agent
+            reporter._search_agent = search_agent
+
+    app.state.registry = registry
     yield
 
 
 app = FastAPI(title="飞书 Demo App", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# WebSocket 连接
 _active_ws: dict[str, list] = {}
 
 
@@ -108,6 +81,7 @@ async def health():
 
 @app.post("/admin/keys")
 async def admin_inject_keys(request: Request):
+    """POST /admin/keys — 运行时注入 Agent 凭证（热注入）。"""
     body = await request.json()
     admin_key = request.headers.get("X-Admin-API-Key", "")
     if admin_key != os.getenv("ADMIN_API_KEY", "admin-secret-key-dev"):
@@ -115,7 +89,14 @@ async def admin_inject_keys(request: Request):
     for name in body:
         if "private_key" in body[name]:
             body[name]["private_key"] = body[name]["private_key"].replace("\\n", "\n")
-    inject_keys(body)
+    registry.inject_keys(body)
+    # 注入 reporter 的依赖关联
+    data_agent = registry.get("data_agent")
+    search_agent = registry.get("search_agent")
+    reporter = registry.get("reporter")
+    if reporter and data_agent and search_agent:
+        reporter._data_agent = data_agent
+        reporter._search_agent = search_agent
     return {"status": "ok"}
 
 
@@ -125,7 +106,7 @@ async def execute_task(request: Request):
     instruction = body.get("instruction", "")
     task_id = str(uuid.uuid4())
 
-    reporter = app.state.agents.get("reporter")
+    reporter = app.state.registry.get("reporter")
     if not reporter:
         return {"error": "Reporter not initialized"}
 

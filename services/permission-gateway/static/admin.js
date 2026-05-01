@@ -374,9 +374,9 @@ async function revokeToken() {
       headers: {'X-Admin-API-Key': getApiKey()}
     });
     currentTokenId = null;
-    currentEntries = {};
+    // 保留 currentEntries，点击"保存"时将创建新令牌
     renderConfigPanel();
-    showToast('令牌已吊销', 'success');
+    showToast('令牌已吊销，点击保存可重新创建', 'success');
   } catch(e) {
     showToast('吊销失败: ' + e.message, 'error');
   }

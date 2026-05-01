@@ -91,22 +91,12 @@ async def handle_register(
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(days=DEFAULT_CERT_TTL_DAYS)
 
-    # 检查是否已存在
+    # 检查是否存在同名同 owner 的 Agent，存在则先吊销再新建
     existing = await get_agent_by_name_owner(conn, request.agent_name, request.owner)
     if existing is not None:
-        # 更新密钥（续期逻辑）
-        private_key_pem, public_key_pem = generate_ed25519_keypair()
-        await update_agent_key(conn, existing.id, public_key_pem, now, expires_at)
-        ttl_seconds = int((expires_at - now).total_seconds())
-        await invalidate_agent_cache(redis, existing.id)
-        await cache_agent_public_key(redis, existing.id, public_key_pem, ttl_seconds)
-        return RegisterAgentResponse(
-            agent_id=existing.id,
-            agent_name=request.agent_name,
-            agent_type=request.agent_type,
-            private_key_pem=private_key_pem,
-            message="Agent already exists. Key renewed.",
-        )
+        if existing.status == CertStatus.active:
+            await update_agent_status(conn, existing.id, CertStatus.revoked)
+            await invalidate_agent_cache(redis, existing.id)
 
     # 新建
     private_key_pem, public_key_pem = generate_ed25519_keypair()

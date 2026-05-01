@@ -34,6 +34,7 @@ from models import (
 from cert_store import (
     store_agent_cert,
     get_agent_cert,
+    get_agent_by_name_owner,
     list_agent_certs,
     update_agent_status,
     update_agent_key,
@@ -81,14 +82,33 @@ async def handle_register(
 ):
     """
     POST /agents/register
-    管理员预注册 Agent。
-    1. 生成 Ed25519 密钥对
-    2. 生成 agent_id (UUID)
-    3. 构造 AgentRecord，写入 PG
-    4. 公钥缓存到 Redis
-    5. 返回 agent_id + private_key_pem
+    管理员预注册 Agent。若同名同 owner 已存在 active Agent，则复用（更新密钥）。
+    1. 检查是否存在同名同 owner 的 active Agent
+    2. 若存在：更新密钥对，返回已有 agent_id + 新私钥
+    3. 若不存在：生成新密钥对 + 新 agent_id
     注意：private_key 仅在此次响应中返回，服务端不存储！
     """
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=DEFAULT_CERT_TTL_DAYS)
+
+    # 检查是否已存在
+    existing = await get_agent_by_name_owner(conn, request.agent_name, request.owner)
+    if existing is not None:
+        # 更新密钥（续期逻辑）
+        private_key_pem, public_key_pem = generate_ed25519_keypair()
+        await update_agent_key(conn, existing.id, public_key_pem, now, expires_at)
+        ttl_seconds = int((expires_at - now).total_seconds())
+        await invalidate_agent_cache(redis, existing.id)
+        await cache_agent_public_key(redis, existing.id, public_key_pem, ttl_seconds)
+        return RegisterAgentResponse(
+            agent_id=existing.id,
+            agent_name=request.agent_name,
+            agent_type=request.agent_type,
+            private_key_pem=private_key_pem,
+            message="Agent already exists. Key renewed.",
+        )
+
+    # 新建
     private_key_pem, public_key_pem = generate_ed25519_keypair()
     agent_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)

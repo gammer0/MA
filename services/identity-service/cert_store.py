@@ -49,6 +49,20 @@ async def get_agent_cert(conn: AsyncConnection, agent_id: str) -> Optional[Agent
     return _row_to_agent_record(row)
 
 
+async def get_agent_by_name_owner(
+    conn: AsyncConnection, agent_name: str, owner: str
+) -> Optional[AgentRecord]:
+    """按名称和属主查询 active 状态的 Agent（用于去重）。"""
+    result = await conn.execute(
+        text("SELECT * FROM agents WHERE agent_name = :name AND owner = :owner AND status = 'active'"),
+        {"name": agent_name, "owner": owner},
+    )
+    row = result.fetchone()
+    if row is None:
+        return None
+    return _row_to_agent_record(row)
+
+
 async def list_agent_certs(
     conn: AsyncConnection, status_filter: Optional[str] = None
 ) -> list[AgentRecord]:

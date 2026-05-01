@@ -10,6 +10,10 @@ from fastapi.responses import HTMLResponse
 from pathlib import Path
 
 from config import GATEWAY_URL
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "agent-sdk"))
+
 from agent_registry import AgentRegistry
 from orchestrator import ReporterAgent
 from worker_agents.data_agent import DataAgent

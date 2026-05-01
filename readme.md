@@ -41,7 +41,6 @@ python scripts/batch_register.py \
 | 身份注册服务 | `:8001` | Agent 证书生成/颁发/验签 |
 | 权限网关 | `:8002` | 令牌管理 + 调用拦截 + 管理 UI |
 | 审计模块 | `:8003` | 签名记录 + 会话日志 + 调用链 |
-| 执行层 | `:8004` | 多Agent协作演示控制台 (Searcher/Analyzer) |
 | 飞书 Demo | `:8005` | 飞书三Agent演示 (Reporter/Data/Search) |
 | PostgreSQL | `:5432` | 共享数据库 |
 | PostgreSQL | `:5432` | 共享数据库 |
@@ -98,14 +97,14 @@ MA/
 │   ├── audit-service/         # 审计模块 (:8003)
 │   └── execution-layer/       # 执行层入口 (配置文件, 业务代码在 demo-app/)
 │
-├── demo-app/                  # 独立演示项目
-│   ├── agent_sdk/             # Agent SDK (签名 + 网关调用)
-│   ├── orchestrator.py        # 编排器 Agent
-│   ├── worker_agents/         # Searcher / Analyzer
-│   ├── mcp_tools/             # Mock MCP 工具集
-│   ├── static/                # Web UI (执行层控制台)
-│   └── web_ui.py              # Web UI 路由
+├── feishu-demo-app/           # 飞书三Agent演示项目
+│   ├── main.py                # FastAPI (:8005)
+│   ├── orchestrator.py        # ReporterAgent (飞书文档助手)
+│   ├── worker_agents/         # DataAgent / SearchAgent
+│   ├── mcp_tools/             # 飞书CLI封装 + Mock搜索工具
+│   └── static/                # Web UI
 │
+├── agent-sdk/                 # Agent SDK（独立包）
 ├── docker/                    # Docker Compose 编排
 ├── scripts/                   # 运维脚本
 │   ├── batch_register.py      # 批量注册 Agent + Tool

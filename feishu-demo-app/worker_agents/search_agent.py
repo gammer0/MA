@@ -1,4 +1,8 @@
 """外部检索 Agent — 仅公开网页，无权访问飞书企业数据"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "agent-sdk"))
+
 from agent_sdk import SecureAgentClient, PermissionDeniedError
 from mcp_tools.search_tools import WebSearchTool, PageFetchTool
 

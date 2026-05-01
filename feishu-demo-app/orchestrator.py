@@ -1,4 +1,8 @@
 """飞书文档助手 (Reporter) — 编排器 Agent"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "agent-sdk"))
+
 from agent_sdk import SecureAgentClient, PermissionDeniedError
 from mcp_tools.lark_tools import LarkDocTool
 from llm_client import chat

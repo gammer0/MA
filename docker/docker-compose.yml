@@ -79,19 +79,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  execution-layer:
-    build:
-      context: ../demo-app                              # 独立演示项目
-      dockerfile: Dockerfile
-    ports:
-      - "8004:8004"
-    environment:
-      GATEWAY_URL: http://permission-gateway:8002        # 权限网关地址
-      ADMIN_API_KEY: admin-secret-key-dev               # 管理密钥（供凭证注入）
-    depends_on:
-      - permission-gateway
-    restart: unless-stopped
-
   feishu-demo-app:
     build:
       context: ../feishu-demo-app                       # 飞书演示项目

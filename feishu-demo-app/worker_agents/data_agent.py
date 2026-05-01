@@ -1,4 +1,8 @@
 """企业数据 Agent — 唯一有权访问飞书企业数据"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "agent-sdk"))
+
 from agent_sdk import SecureAgentClient, PermissionDeniedError
 from mcp_tools.lark_tools import LarkBaseTool, LarkContactTool, LarkCalendarTool
 

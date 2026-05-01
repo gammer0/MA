@@ -112,16 +112,13 @@ function showResult(r) {
       addEvent('info', '   ' + e.result);
     });
   }
-  // 自然语言总结
-  if (r.summary) {
-    addEvent('info', '📋 任务总结: ' + r.summary);
-  }
-  addEvent('success', '✅ 任务完成: ' + r.task_id);
-  addEvent('info', '📋 管理员可在权限管理页面通过 Task ID 查询完整审计日志');
-  document.getElementById('result-panel').textContent = JSON.stringify({
+  // 自然语言总结替换任务结果面板
+  document.getElementById('result-panel').textContent = r.summary || JSON.stringify({
     steps: r.steps, enterprise_data_ok: !!r.enterprise_data,
     external_search_ok: !!r.external_search, report_ok: !!r.report
   }, null, 2);
+  addEvent('success', '✅ 任务完成: ' + r.task_id);
+  addEvent('info', '📋 管理员可在权限管理页面通过 Task ID 查询完整审计日志');
 }
 </script>
 </body>

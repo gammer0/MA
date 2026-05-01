@@ -558,6 +558,141 @@ async function rejectRequest(reqId, taskId) {
 // 每5秒自动刷新
 setInterval(refreshPendingRequests, 5000);
 
+// ============================================================
+// 任务审计列表（分页 + 点击展开详情）
+// ============================================================
+let taskPage = 1;
+let taskPageSize = 5;
+let totalPages = 1;
+
+function renderPagination() {
+  const el = document.getElementById('task-pagination');
+  el.innerHTML = `
+    <button class="btn btn-sm mode-btn" onclick="loadTaskList(1)" ${taskPage<=1?'disabled':''}>◀◀</button>
+    <button class="btn btn-sm mode-btn" onclick="loadTaskList(${taskPage-1})" ${taskPage<=1?'disabled':''}>◀</button>
+    <span style="font-size:12px;color:#8b949e;padding:0 8px">${taskPage} / ${totalPages}</span>
+    <button class="btn btn-sm mode-btn" onclick="loadTaskList(${taskPage+1})" ${taskPage>=totalPages?'disabled':''}>▶</button>
+    <button class="btn btn-sm mode-btn" onclick="loadTaskList(${totalPages})" ${taskPage>=totalPages?'disabled':''}>▶▶</button>
+  `;
+}
+
+async function loadTaskList(page) {
+  taskPage = page || taskPage;
+  const el = document.getElementById('task-list-container');
+  el.innerHTML = '<div class="empty">加载中...</div>';
+  try {
+    const r = await fetch(`/admin/task-list?page=${taskPage}&page_size=${taskPageSize}`);
+    const data = await r.json();
+    totalPages = data.total_pages || 1;
+    renderPagination();
+
+    if (!data.tasks || !data.tasks.length) {
+      el.innerHTML = '<div class="empty">暂无任务记录</div>';
+      return;
+    }
+
+    el.innerHTML = data.tasks.map(t => `
+      <div class="pending-item" style="cursor:pointer" onclick="toggleTaskDetail('${t.task_id}')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="flex:1">
+            <div style="font-size:14px;color:#c9d1d9">📝 ${escapeHtml(t.instruction)}</div>
+            <div style="font-size:11px;color:#8b949e;margin-top:4px">
+              Task: ${t.task_id.substring(0,8)}... | ${t.session_count} 次调用 | ${new Date(t.first_call).toLocaleString()}
+            </div>
+          </div>
+          <span id="expand-${t.task_id}" style="font-size:14px;color:#8b949e">▶</span>
+        </div>
+        <div id="detail-${t.task_id}" style="display:none;margin-top:12px;border-top:1px solid #21262d;padding-top:8px">
+          <div class="empty">加载中...</div>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty" style="color:#f85149">加载失败: ' + e.message + '</div>';
+  }
+}
+
+async function toggleTaskDetail(taskId) {
+  const detailEl = document.getElementById('detail-' + taskId);
+  const expandEl = document.getElementById('expand-' + taskId);
+  if (detailEl.style.display === 'block') {
+    detailEl.style.display = 'none';
+    expandEl.textContent = '▶';
+    return;
+  }
+  detailEl.style.display = 'block';
+  expandEl.textContent = '▼';
+  detailEl.innerHTML = '<div class="empty">加载中...</div>';
+
+  try {
+    const r = await fetch(`/admin/task-audit/${taskId}`);
+    const data = await r.json();
+    let html = '';
+
+    // 调用链（父级，始终可见，可折叠。每个 step 显示原始信息）
+    if (data.trace && data.trace.steps && data.trace.steps.length > 0) {
+      const sessionsId = 'sessions-' + taskId;
+      html += `<div style="padding:8px 12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;cursor:pointer" onclick="event.stopPropagation();var e=document.getElementById('${sessionsId}');var t=this.querySelector('.trace-toggle');e.style.display=e.style.display==='none'?'block':'none';t.textContent=e.style.display==='none'?'🔗 调用链 (${data.trace.steps.length} 步) ▶':'🔗 调用链 (${data.trace.steps.length} 步) ▼'">
+        <div class="trace-toggle" style="color:#58a6ff;font-size:12px;pointer-events:none">🔗 调用链 (${data.trace.steps.length} 步) ▼</div>
+        <pre style="margin-top:4px;overflow-x:auto;font-size:12px;color:#c9d1d9;background:transparent">${data.trace.steps.map((s, i) => {
+          const icon = s.decision === 'allowed' ? '✅' : '❌';
+          const caller = resolveAgentName(s.caller);
+          const target = s.call_type === 'a2a' ? resolveAgentName(s.target) : s.target;
+          const extra = s.tool_owner ? ` (${s.tool_owner})` : '';
+          return `${icon} ${caller} → ${target} [${s.call_type}]${extra}`;
+        }).join('\n')}</pre>
+        <div id="${sessionsId}" style="margin-top:8px;border-top:1px solid #30363d;padding-top:8px;display:none">
+          <div style="font-size:12px;color:#8b949e;margin-bottom:6px"><strong>📋 原始会话信息:</strong></div>
+          ${data.sessions && data.sessions.length > 0 ? data.sessions.map(s => {
+            const icon = s.decision === 'allowed' ? '✅' : '❌';
+            const time = new Date(s.created_at).toLocaleTimeString();
+            return `<div style="padding:2px 0;font-size:11px;font-family:monospace;border-bottom:1px solid #21262d">
+              <span style="color:#58a6ff">${time}</span> ${icon} sid=${s.session_id.substring(0,8)} task=${s.task_id.substring(0,8)} caller=${resolveAgentName(s.caller_agent_id)} → ${s.target_id} [${s.call_type}] depth=${s.depth}
+              ${s.tool_owner ? ` owner=${s.tool_owner}` : ''}
+              ${s.deny_reason ? ` <span style="color:#f85149">deny:${s.deny_reason}</span>` : ''}
+            </div>`;
+          }).join('') : '<div class="empty" style="font-size:11px">暂无会话日志</div>'}
+        </div>
+      </div>`;
+    } else if (data.sessions && data.sessions.length > 0) {
+      // 无 trace steps 但有 sessions（fallback）
+      html += '<div style="margin-bottom:8px"><strong>📋 会话日志:</strong></div>';
+      data.sessions.forEach(s => {
+        const icon = s.decision === 'allowed' ? '✅' : '❌';
+        const time = new Date(s.created_at).toLocaleTimeString();
+        html += `<div style="padding:3px 0;font-size:12px;border-bottom:1px solid #21262d">
+          <span style="color:#8b949e">${time}</span>
+          ${icon} ${resolveAgentName(s.caller_agent_id)} → ${s.target_id} [${s.call_type}]
+        </div>`;
+      });
+    } else {
+      html += '<div class="empty">暂无记录</div>';
+    }
+
+    // 权限申请
+    if (data.pending_requests && data.pending_requests.length > 0) {
+      html += '<div style="margin-top:8px"><strong>⏳ 权限申请:</strong></div>';
+      data.pending_requests.forEach(pr => {
+        const statusLabel = {'pending_approval': '⏳', 'approved': '✅', 'rejected': '❌'}[pr.status] || pr.status;
+        html += `<div style="padding:2px 0;font-size:12px">${statusLabel} ${resolveAgentName(pr.agent_id)}: ${escapeHtml(pr.reason || '')}</div>`;
+      });
+    }
+
+    detailEl.innerHTML = html;
+  } catch(e) {
+    detailEl.innerHTML = `<div class="empty" style="color:#f85149">加载失败: ${e.message}</div>`;
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 页面加载时初始加载任务列表
+(async function loadInitial() {
+  await loadTaskList(1);
+})();
+
 let _agentsLoaded = false;
 
 // 页面加载时预加载 agents 和 tools（用于审批面板标签解析）

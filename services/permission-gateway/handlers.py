@@ -662,6 +662,172 @@ async def handle_get_session_view(
 # 权限订阅管理 UI
 # ============================================================
 
+@router.post("/tasks/{task_id}/instruction")
+async def handle_store_task_instruction(
+    task_id: str,
+    request: Request,
+    redis: Redis = Depends(get_redis),
+):
+    """POST /tasks/{task_id}/instruction — 存储任务指令（执行层调用）。"""
+    body = await request.json()
+    instruction = body.get("instruction", "")
+    await redis.set(f"task:{task_id}:instruction", instruction, ex=86400)
+    return {"status": "ok", "task_id": task_id}
+
+
+@router.get("/admin/task-audit/{task_id}")
+async def handle_admin_task_audit(
+    task_id: str,
+    gateway_request: Request,
+    redis: Redis = Depends(get_redis),
+):
+    """GET /admin/task-audit/{task_id} — 管理员查询任务的完整审计日志。"""
+    import httpx
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+    engine: AsyncEngine = gateway_request.app.state.db_engine
+
+    # 1. 获取任务指令
+    instruction = await redis.get(f"task:{task_id}:instruction")
+    instruction_str = instruction if isinstance(instruction, str) else (instruction.decode("utf-8") if instruction else "")
+
+    result = {
+        "task_id": task_id,
+        "instruction": instruction_str,
+        "trace": None,
+        "sessions": [],
+        "pending_requests": [],
+    }
+
+    # 2. 直接从数据库查询会话日志（绕过 audit-service 的 API bug）
+    try:
+        async with engine.begin() as conn:
+            # 会话日志
+            sl_result = await conn.execute(
+                text("SELECT session_id, task_id, caller_agent_id, call_type, target_id, "
+                     "tool_owner, depth, decision, deny_reason, created_at "
+                     "FROM session_logs WHERE task_id = :tid ORDER BY created_at"),
+                {"tid": task_id},
+            )
+            for row in sl_result.fetchall():
+                result["sessions"].append({
+                    "session_id": str(row.session_id),
+                    "task_id": str(row.task_id),
+                    "caller_agent_id": str(row.caller_agent_id),
+                    "call_type": row.call_type,
+                    "target_id": row.target_id,
+                    "tool_owner": row.tool_owner or "",
+                    "depth": row.depth,
+                    "decision": row.decision,
+                    "deny_reason": row.deny_reason or "",
+                    "created_at": str(row.created_at),
+                })
+
+            # 调用链（简单的树形结构：按 depth 分组）
+            trace_result = await conn.execute(
+                text("SELECT session_id, call_type, caller_agent_id, target_id, "
+                     "tool_owner, decision, deny_reason, depth, created_at "
+                     "FROM session_logs WHERE task_id = :tid ORDER BY created_at"),
+                {"tid": task_id},
+            )
+            trace_nodes = []
+            for row in trace_result.fetchall():
+                trace_nodes.append({
+                    "session_id": str(row.session_id),
+                    "call_type": row.call_type,
+                    "caller": str(row.caller_agent_id),
+                    "target": row.target_id,
+                    "tool_owner": row.tool_owner or "",
+                    "decision": row.decision,
+                    "deny_reason": row.deny_reason or "",
+                    "depth": row.depth,
+                    "time": str(row.created_at),
+                })
+            if trace_nodes:
+                result["trace"] = {"task_id": task_id, "steps": trace_nodes}
+    except Exception:
+        pass
+
+    # 3. 本地的权限申请记录
+    try:
+        async with engine.begin() as conn:
+            pr_result = await conn.execute(
+                text("SELECT id, agent_id, reason, status, requested_entries, created_at, reviewed_at "
+                     "FROM permission_requests WHERE task_id = :tid ORDER BY created_at"),
+                {"tid": task_id},
+            )
+            import json as _json
+            for row in pr_result.fetchall():
+                result["pending_requests"].append({
+                    "request_id": str(row.id),
+                    "agent_id": str(row.agent_id),
+                    "reason": row.reason or "",
+                    "status": row.status,
+                    "requested_entries": _json.loads(row.requested_entries) if isinstance(row.requested_entries, str) else row.requested_entries,
+                    "created_at": str(row.created_at),
+                    "reviewed_at": str(row.reviewed_at) if row.reviewed_at else None,
+                })
+    except Exception:
+        pass
+
+    return result
+
+
+@router.get("/admin/task-list")
+async def handle_admin_task_list(
+    page: int = 1,
+    page_size: int = 5,
+    gateway_request: Request = None,
+    redis: Redis = Depends(get_redis),
+):
+    """GET /admin/task-list?page=1&page_size=5 — 分页任务列表。"""
+    import json as _json
+    from sqlalchemy.ext.asyncio import AsyncEngine
+    engine: AsyncEngine = gateway_request.app.state.db_engine if gateway_request else None
+
+    if engine is None:
+        return {"tasks": [], "total": 0, "page": page, "page_size": page_size, "total_pages": 1}
+
+    # 从 session_logs 获取不重复的任务ID和时间
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            text("SELECT DISTINCT task_id, MIN(created_at) as first_call, MAX(created_at) as last_call "
+                 "FROM session_logs GROUP BY task_id ORDER BY MIN(created_at) DESC")
+        )
+        all_tasks = [(str(r.task_id), str(r.first_call), str(r.last_call)) for r in result.fetchall()]
+
+    total = len(all_tasks)
+    start = (page - 1) * page_size
+    tasks_page = all_tasks[start:start + page_size]
+
+    items = []
+    for tid, first_call, last_call in tasks_page:
+        instruction = await redis.get(f"task:{tid}:instruction")
+        instr_str = instruction if isinstance(instruction, str) else (instruction.decode("utf-8") if instruction else "")
+        # 统计会话数
+        async with engine.begin() as conn:
+            cnt_result = await conn.execute(
+                text("SELECT COUNT(*) as cnt FROM session_logs WHERE task_id = :tid"),
+                {"tid": tid},
+            )
+            session_count = cnt_result.fetchone().cnt
+        items.append({
+            "task_id": tid,
+            "instruction": instr_str or "(无指令)",
+            "session_count": session_count,
+            "first_call": first_call,
+            "last_call": last_call,
+        })
+
+    return {
+        "tasks": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+    }
+
+
 @router.get("/admin/pending-requests")
 async def handle_admin_pending_requests(
     conn: AsyncConnection = Depends(get_db),

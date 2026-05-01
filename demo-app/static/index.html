@@ -51,11 +51,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="grid">
     <div class="panel">
-      <h2>&#128221; 调用链</h2>
+      <h2>&#128221; 调用链 <span style="font-size:11px;color:#d29922;font-weight:normal">[测试预览]</span></h2>
       <div class="trace-tree" id="trace-tree">等待任务执行...</div>
     </div>
     <div class="panel">
-      <h2>&#128269; 审计日志</h2>
+      <h2>&#128269; 审计日志 <span style="font-size:11px;color:#d29922;font-weight:normal">[测试预览]</span></h2>
       <div class="log-list" id="log-list">等待任务执行...</div>
     </div>
   </div>
@@ -99,6 +99,7 @@ async function executeTask() {
     const taskId = data.task_id;
     connectWebSocket(taskId);
     addLog('info', '任务已启动: ' + taskId);
+    addEvent('info', '📋 Task ID: ' + taskId);
     addEvent('info', '任务已启动: ' + instruction);
     addEvent('warn', '⏳ 等待任务执行结果...');
   } catch(e) {
@@ -147,6 +148,7 @@ function handleEvent(data) {
       }
     }
     addEvent('success', '✅ 任务完成: ' + data.task_id);
+    addEvent('info', '📋 管理员可在权限管理页面通过 Task ID 查询完整审计日志');
   } else if (data.event === 'audit_log') {
     showAuditLog(data.sessions || []);
   } else if (data.event === 'task_result') {

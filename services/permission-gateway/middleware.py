@@ -22,6 +22,10 @@ class AdminAPIKeyMiddleware(BaseHTTPMiddleware):
         if request.url.path.endswith("/permission-requests") and request.method == "POST":
             return await call_next(request)
 
+        # 跳过执行层存储任务指令（内部调用）
+        if request.url.path.endswith("/instruction") and request.method == "POST":
+            return await call_next(request)
+
         # 跳过 Agent 发起的任务结束（编排器通过 Agent 签名调用）
         if request.url.path.endswith("/finalize") and request.method == "POST":
             return await call_next(request)

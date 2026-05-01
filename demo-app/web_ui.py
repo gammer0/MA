@@ -54,6 +54,17 @@ async def handle_execute_task(request: dict):
     if orchestrator is None:
         return {"error": "Orchestrator not initialized"}
 
+    # 存储任务指令到网关（在 create_task 之前同步完成）
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as c:
+            await c.post(
+                f"{GATEWAY_URL}/tasks/{task_id}/instruction",
+                json={"instruction": instruction}
+            )
+    except Exception:
+        pass
+
     async def run_task():
         try:
             await _push_event(task_id, {"event": "task_started", "message": "任务开始执行"})

@@ -7,6 +7,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 
 from config import GATEWAY_URL
@@ -90,6 +91,13 @@ app = FastAPI(
     description="独立于安全内核的演示系统，通过 HTTP API 与权限网关交互",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(web_router)

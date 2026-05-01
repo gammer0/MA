@@ -4,8 +4,10 @@ import uuid
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from pathlib import Path
 
 from config import GATEWAY_URL
 from orchestrator import ReporterAgent
@@ -126,18 +128,14 @@ async def execute_task(request: Request):
 
 
 @app.websocket("/ws/tasks/{task_id}")
-async def ws_task(ws, task_id: str):
-    await ws.accept()
-    _active_ws.setdefault(task_id, []).append(ws)
+async def ws_task(websocket: WebSocket, task_id: str):
+    await websocket.accept()
+    _active_ws.setdefault(task_id, []).append(websocket)
     try:
         while True:
-            await ws.receive_text()
-    except Exception:
-        _active_ws.get(task_id, []).remove(ws)
-
-
-from fastapi.responses import HTMLResponse
-from pathlib import Path
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        _active_ws.get(task_id, []).remove(websocket)
 
 
 @app.get("/", response_class=HTMLResponse)

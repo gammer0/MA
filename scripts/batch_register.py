@@ -157,6 +157,22 @@ def main():
         except requests.RequestException:
             print(f"\n⚠️ 无法连接执行层 {exec_url}（可能未启动），私钥仍写入文件")
 
+        # 同时注入到飞书 demo app (:8005)
+        feishu_url = args.url.replace("8001", "8005")
+        try:
+            resp = requests.post(
+                f"{feishu_url}/admin/keys",
+                json=payload,
+                headers={"X-Admin-API-Key": args.api_key},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                print(f"✅ 凭证已直接注入飞书执行层: {feishu_url}")
+            else:
+                print(f"⚠️ 凭证注入飞书执行层失败: HTTP {resp.status_code}")
+        except requests.RequestException:
+            print(f"⚠️ 无法连接飞书执行层 {feishu_url}（可能未启动）")
+
     if results["errors"]:
         sys.exit(1)
 

@@ -1,6 +1,7 @@
 """飞书文档助手 (Reporter) — 编排器 Agent"""
 from agent_sdk import SecureAgentClient, PermissionDeniedError
 from mcp_tools.lark_tools import LarkDocTool
+from llm_client import chat
 
 
 class ReporterAgent(SecureAgentClient):
@@ -64,10 +65,10 @@ class ReporterAgent(SecureAgentClient):
             add_trace("reporter", "search_agent", "A2A", "denied")
             result["steps"].append({"step": "external_search", "status": "denied", "reason": str(e)})
 
-        # Step 3: 写飞书文档
+        # Step 3: 用 LLM 生成报告并写入飞书文档
         try:
             add_trace("reporter", "lark_doc_create", "MCP", "pending")
-            report_content = self._build_report(instruction, result)
+            report_content = await self._generate_report_async(instruction, result)
             await self.call_mcp_tool(
                 tool_name="lark_doc", tool_owner="reporter",
                 tool_args={"action": "create", "title": f"周报: {instruction[:30]}",
@@ -88,24 +89,32 @@ class ReporterAgent(SecureAgentClient):
         return result
 
     def _build_report(self, instruction: str, result: dict) -> str:
-        parts = [f"# 周报: {instruction}\n"]
-        parts.append("---\n")
-
+        """使用 LLM 生成结构化报告。"""
+        # 注：_build_report 是同步方法，LLM 调用在外部用同步方式
+        data_summary = ""
         if result.get("enterprise_data"):
-            parts.append("## 📊 企业数据\n")
             ed = result["enterprise_data"]
-            if ed.get("calendar"):
-                parts.append(f"- 日历: {ed['calendar'].get('data', '无数据')}")
-            if ed.get("base_data"):
-                parts.append(f"- 多维表格: {ed['base_data'].get('data', '无数据')}")
-            parts.append("")
-
+            data_summary += f"日历数据: {ed.get('calendar', '无')}\n"
+            data_summary += f"多维表格: {ed.get('base_data', '无')}\n"
         if result.get("external_search"):
-            parts.append("## 🌐 外部动态\n")
             es = result["external_search"]
-            if es.get("search"):
-                parts.append(f"- 搜索结果: {es['search'].get('results', [])}")
-            parts.append("")
+            data_summary += f"搜索结果: {es.get('search', '无')}\n"
 
-        parts.append(f"---\n✅ 报告自动生成")
-        return "\n".join(str(p) for p in parts)
+        return f"# 周报: {instruction}\n\n## 企业数据\n{data_summary}\n\n## 外部动态\n待补充"
+
+    async def _generate_report_async(self, instruction: str, result: dict) -> str:
+        """异步 LLM 生成报告。"""
+        data_summary = ""
+        if result.get("enterprise_data"):
+            ed = result["enterprise_data"]
+            data_summary += f"日历: {ed.get('calendar', '无')}\n"
+            data_summary += f"多维表格: {ed.get('base_data', '无')}\n"
+        if result.get("external_search"):
+            es = result["external_search"]
+            data_summary += f"搜索: {es.get('search', '无')}\n"
+
+        prompt = f"基于以下数据生成一篇企业周报（Markdown，100字内，用中文）:\n任务: {instruction}\n\n{data_summary}"
+        try:
+            return await chat(prompt, system="你是飞书文档助手，负责生成企业周报。")
+        except Exception:
+            return self._build_report(instruction, result)

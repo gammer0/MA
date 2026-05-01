@@ -1,0 +1,29 @@
+{
+    "version": "1.0.0",
+    "description": "飞书三Agent协作演示 - 企业数据 + 外部检索 + 文档助手",
+    "agents": [
+        {
+            "agent_name": "reporter",
+            "agent_type": "orchestrator",
+            "owner": "feishu-team"
+        },
+        {
+            "agent_name": "data_agent",
+            "agent_type": "worker",
+            "owner": "feishu-team"
+        },
+        {
+            "agent_name": "search_agent",
+            "agent_type": "worker",
+            "owner": "feishu-team"
+        }
+    ],
+    "tools": [
+        {"tool_name": "lark_doc",      "tool_owner": "reporter",    "description": "飞书云文档创建"},
+        {"tool_name": "lark_base",     "tool_owner": "data_agent",  "description": "飞书多维表格查询"},
+        {"tool_name": "lark_contact",  "tool_owner": "data_agent",  "description": "飞书通讯录搜索"},
+        {"tool_name": "lark_calendar", "tool_owner": "data_agent",  "description": "飞书日历日程"},
+        {"tool_name": "web_search",    "tool_owner": "search_agent","description": "公开网页搜索"},
+        {"tool_name": "page_fetch",    "tool_owner": "search_agent","description": "网页内容抓取"}
+    ]
+}

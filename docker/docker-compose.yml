@@ -101,6 +101,11 @@ services:
     environment:
       GATEWAY_URL: http://permission-gateway:8002
       ADMIN_API_KEY: admin-secret-key-dev
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_API_BASE: ${LLM_API_BASE:-https://api.openai.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      FEISHU_APP_ID: ${FEISHU_APP_ID}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET}
     command: python3 -m uvicorn main:app --host 0.0.0.0 --port 8005
     depends_on:
       - permission-gateway

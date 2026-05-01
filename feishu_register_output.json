@@ -1,0 +1,24 @@
+{
+  "agents": [
+    {
+      "agent_name": "reporter",
+      "agent_id": "18573fca-da22-4f88-83ca-5b568847c883",
+      "agent_type": "orchestrator",
+      "private_key_pem": "-----BEGIN PRIVATE KEY-----\n92ea938phAb0mmFo4TWS5Y5nz9hir3FI1jZlNglOTXE=\n-----END PRIVATE KEY-----\n"
+    },
+    {
+      "agent_name": "data_agent",
+      "agent_id": "c5a74efd-7e19-4a0f-a097-605e3a3726c5",
+      "agent_type": "worker",
+      "private_key_pem": "-----BEGIN PRIVATE KEY-----\ny0uk2L6MO6mYSx9AgU94J5/Kb+AGLZbbySmho2Av1nY=\n-----END PRIVATE KEY-----\n"
+    },
+    {
+      "agent_name": "search_agent",
+      "agent_id": "24d53a3d-2526-4fd9-a305-af92650baa9b",
+      "agent_type": "worker",
+      "private_key_pem": "-----BEGIN PRIVATE KEY-----\nw5NB2w9j5zf3x8+g+u9dl+NfDHyOICeJkYOnVHtbIGI=\n-----END PRIVATE KEY-----\n"
+    }
+  ],
+  "tools": [],
+  "errors": []
+}

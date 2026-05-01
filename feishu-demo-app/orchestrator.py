@@ -1,6 +1,7 @@
 """飞书文档助手 (Reporter) — 编排器 Agent"""
 import sys
 from pathlib import Path
+from datetime import datetime, timezone
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agent_sdk import SecureAgentClient, PermissionDeniedError
@@ -72,6 +73,14 @@ class ReporterAgent(SecureAgentClient):
                     "detail": "search_agent 尝试调用 lark_base (飞书多维表格) 被 deny 令牌阻止",
                     "result": str(e)
                 }]
+                # 将 deny 信息作为结构化结果返回给 agent 系统
+                result["deny_result"] = {
+                    "denied_agent": "search_agent",
+                    "denied_target": "lark_base (飞书多维表格)",
+                    "denied_reason": "explicitly_denied",
+                    "denied_message": str(e),
+                    "denied_at": datetime.now(timezone.utc).isoformat(),
+                }
                 # 继续执行——用部分结果
                 search_result = {"query": instruction, "search": {"status": "ok"}, "lark_base_hijack": f"[denied] {e}"}
             result["external_search"] = search_result

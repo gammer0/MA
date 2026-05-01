@@ -390,4 +390,88 @@ function showToast(msg, type) {
   setTimeout(() => el.remove(), 3000);
 }
 
+// ============================================================
+// 审批窗口（定时刷新待审批列表）
+// ============================================================
+let approvalMode = 'manual'; // 'manual' | 'auto'
+
+function setApprovalMode(mode) {
+  approvalMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('mode-' + mode).classList.add('active');
+  document.getElementById('approval-status').textContent = 
+    mode === 'auto' ? '当前模式: 自动批准 [降级]' : '当前模式: 人工审批';
+  refreshPendingRequests();
+}
+
+async function refreshPendingRequests() {
+  try {
+    const r = await fetch('/admin/pending-requests');
+    const requests = await r.json();
+    const el = document.getElementById('pending-list');
+    if (!requests.length) {
+      el.innerHTML = '<div class="empty">暂无待审批请求</div>';
+      return;
+    }
+    el.innerHTML = requests.map(req => `
+      <div class="pending-item" id="req-${req.request_id}">
+        <div class="pending-header">
+          <span>🔔 ${req.agent_id.substring(0,8)}...</span>
+          <span class="pending-time">${new Date(req.created_at).toLocaleTimeString()}</span>
+        </div>
+        <div class="pending-reason">📝 ${req.reason || '无理由'}</div>
+        <div class="pending-entries">请求权限: ${req.requested_entries.map(e => e.object_id + '(' + e.tool_owner + ')').join(', ')}</div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn btn-primary btn-sm" onclick="approveRequest('${req.request_id}', '${req.task_id}')">✅ 允许</button>
+          <button class="btn btn-danger btn-sm" onclick="rejectRequest('${req.request_id}', '${req.task_id}')">❌ 拒绝</button>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+async function approveRequest(reqId, taskId) {
+  const apiKey = getApiKey();
+  if (!apiKey) return;
+  const action = approvalMode === 'auto' ? 'auto_approve' : 'approve';
+  try {
+    // 先获取请求详情拿到 entries
+    const detail = await fetch(`/tasks/${taskId}/permission-requests/${reqId}`);
+    const req = await detail.json();
+    const r = await fetch(`/tasks/${taskId}/permission-requests/${reqId}/approve`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+      body: JSON.stringify({
+        action: action,
+        approved_entries: req.requested_entries || [],
+        ttl_seconds: req.requested_ttl || 300,
+        comment: action === 'auto_approve' ? '[降级] 自动批准' : '管理员批准'
+      })
+    });
+    if (r.ok) {
+      showToast('已批准' + (action === 'auto_approve' ? ' [降级]' : ''), 'success');
+      document.getElementById('req-' + reqId).remove();
+    }
+  } catch(e) { showToast('操作失败: ' + e.message, 'error'); }
+}
+
+async function rejectRequest(reqId, taskId) {
+  const apiKey = getApiKey();
+  if (!apiKey) return;
+  try {
+    const r = await fetch(`/tasks/${taskId}/permission-requests/${reqId}/approve`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+      body: JSON.stringify({action:'reject', comment:'管理员拒绝'})
+    });
+    if (r.ok) {
+      showToast('已拒绝', 'error');
+      document.getElementById('req-' + reqId).remove();
+    }
+  } catch(e) { showToast('操作失败: ' + e.message, 'error'); }
+}
+
+// 每5秒自动刷新
+setInterval(refreshPendingRequests, 5000);
+
 init();

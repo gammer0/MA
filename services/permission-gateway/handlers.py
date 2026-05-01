@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy import text
 from redis.asyncio import Redis
 
 from config import MAX_TEMP_PERMISSION_TTL, VIEW_CACHE_TTL, IDENTITY_SERVICE_URL, ADMIN_API_KEY
@@ -651,6 +652,31 @@ async def handle_get_session_view(
 # ============================================================
 # 权限订阅管理 UI
 # ============================================================
+
+@router.get("/admin/pending-requests")
+async def handle_admin_pending_requests(
+    conn: AsyncConnection = Depends(get_db),
+):
+    """GET /admin/pending-requests — 列出所有待审批的权限申请。"""
+    result = await conn.execute(
+        text("SELECT * FROM permission_requests WHERE status = 'pending_approval' ORDER BY created_at DESC")
+    )
+    rows = result.fetchall()
+    import json as _json
+    return [
+        {
+            "request_id": str(r.id),
+            "task_id": str(r.task_id),
+            "agent_id": str(r.agent_id),
+            "reason": r.reason or "",
+            "status": r.status,
+            "requested_entries": _json.loads(r.requested_entries) if isinstance(r.requested_entries, str) else r.requested_entries,
+            "requested_ttl": r.requested_ttl,
+            "created_at": str(r.created_at),
+        }
+        for r in rows
+    ]
+
 
 @router.get("/admin/agents")
 async def handle_admin_list_agents():

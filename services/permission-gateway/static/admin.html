@@ -78,6 +78,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .log-area .ok{color:#3fb950}
 .log-area .err{color:#f85149}
 .log-area .warn{color:#d29922}
+.pending-item{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;margin:8px 0}
+.pending-header{display:flex;justify-content:space-between;font-size:14px}
+.pending-time{font-size:11px;color:#8b949e}
+.pending-reason{font-size:13px;color:#c9d1d9;margin:4px 0}
+.pending-entries{font-size:12px;color:#8b949e}
+.btn-sm{padding:4px 12px!important;font-size:12px!important}
+.mode-btn{background:#21262d!important;color:#8b949e!important;border:1px solid #30363d!important}
+.mode-btn.active{background:#1f6feb33!important;color:#58a6ff!important;border-color:#1f6feb!important}
 </style>
 </head>
 <body>
@@ -124,6 +132,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <h2>选择左侧 Agent 开始配置</h2>
       <div class="desc">点击 Agent 后，通过点击 Tool 和 Agent 项来配置 allow/deny 权限规则</div>
     </div>
+  </div>
+  </div>
+  <!-- 审批窗口 -->
+  <div id="approval-panel" style="margin-top:24px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="font-size:14px;color:#c9d1d9">⏳ 权限申请审批</h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm mode-btn active" id="mode-manual" onclick="setApprovalMode('manual')" style="padding:4px 12px;font-size:12px">人工审批</button>
+        <button class="btn btn-sm mode-btn" id="mode-auto" onclick="setApprovalMode('auto')" style="padding:4px 12px;font-size:12px">自动降级</button>
+      </div>
+    </div>
+    <div id="approval-status" style="font-size:12px;color:#8b949e;margin-bottom:12px">当前模式: 人工审批</div>
+    <div id="pending-list"><div class="empty">暂无待审批请求</div></div>
   </div>
   </div>
   </div>

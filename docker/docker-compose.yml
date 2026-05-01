@@ -87,6 +87,7 @@ services:
       - "8004:8004"
     environment:
       GATEWAY_URL: http://permission-gateway:8002        # 权限网关地址
+      ADMIN_API_KEY: admin-secret-key-dev               # 管理密钥（供凭证注入）
     depends_on:
       - permission-gateway
     restart: unless-stopped

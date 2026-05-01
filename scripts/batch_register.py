@@ -130,6 +130,33 @@ def main():
     print(f"\n📄 详细结果已写入: {output_path}")
     print(f"\n🔐 私钥已在 {output_path} 中，请安全保存后从文件中移除私钥！")
 
+    # ==========================================================
+    # 直接注入到执行层（不经过文件落盘）
+    # ==========================================================
+    if results["agents"] and not results["errors"]:
+        exec_url = args.url.replace("8001", "8004")
+        payload = {}
+        for agent in results["agents"]:
+            name = agent["agent_name"]
+            payload[name] = {
+                "agent_id": agent["agent_id"],
+                "private_key": agent["private_key_pem"],
+            }
+        try:
+            resp = requests.post(
+                f"{exec_url}/admin/keys",
+                json=payload,
+                headers={"X-Admin-API-Key": args.api_key},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                print(f"\n✅ 凭证已直接注入执行层: {exec_url}")
+                print(f"   无需中间文件传递私钥")
+            else:
+                print(f"\n⚠️ 凭证注入执行层失败: HTTP {resp.status_code}")
+        except requests.RequestException:
+            print(f"\n⚠️ 无法连接执行层 {exec_url}（可能未启动），私钥仍写入文件")
+
     if results["errors"]:
         sys.exit(1)
 

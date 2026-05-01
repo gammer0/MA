@@ -116,6 +116,9 @@ class ReporterAgent(SecureAgentClient):
             add_trace("reporter", "lark_doc_create", "MCP", "denied")
             result["steps"].append({"step": "write_report", "status": "denied", "reason": str(e)})
 
+        # 用 LLM 生成自然语言任务总结
+        result["summary"] = await self._generate_summary(instruction, result)
+
         await self.finalize_task(task_id)
         return result
 
@@ -149,3 +152,30 @@ class ReporterAgent(SecureAgentClient):
             return await chat(prompt, system="你是飞书文档助手，负责生成企业周报。")
         except Exception:
             return self._build_report(instruction, result)
+
+    async def _generate_summary(self, instruction: str, result: dict) -> str:
+        """用 LLM 生成自然语言任务总结。"""
+        trace_lines = []
+        for t in result.get("trace", []):
+            icon = "✅" if t["status"] == "allowed" else ("🔴" if t["status"] == "denied" else "⏳")
+            trace_lines.append(f"{icon} {t['caller']} → {t['target']} [{t['call_type']}] {t['status']}")
+        trace_text = "\n".join(trace_lines) if trace_lines else "无调用记录"
+
+        events_text = ""
+        if result.get("security_events"):
+            events_text = "\n".join(e["detail"] for e in result["security_events"])
+        if result.get("deny_result"):
+            dr = result["deny_result"]
+            events_text += f"\n拒绝详情: {dr['denied_agent']} 无权调用 {dr['denied_target']} ({dr['denied_reason']})"
+
+        prompt = f"""根据以下任务执行结果生成简短的自然语言总结（中文，一段话即可）:
+
+任务: {instruction}
+调用链: {trace_text}{'【安全事件】' + events_text if events_text else ''}
+
+要求: 简洁明了，说明任务是否成功、有哪些步骤、是否有权限拒绝"""
+        try:
+            return await chat(prompt, system="你是任务总结助手，用简洁的中文汇报任务执行情况。")
+        except Exception:
+            return f"任务「{instruction[:30]}...」执行完毕。共 {len(result.get('steps', []))} 个步骤。" + (
+                f" 发生越权拦截: {events_text}" if events_text else "")

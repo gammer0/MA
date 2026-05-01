@@ -8,11 +8,13 @@
 
 - **令牌管理**：Standard Token（长期，绑定 Agent）的 CRUD 及条目级管理
 - **任务临时权限**：TaskPermissionEntry（绑定 Task+Agent，临时）的管理
-- **权限申请审批**：Agent 按需申请 → 人工审批 → 写入临时权限
-- **令牌视图构建**：单Agent视图（并集）+ 多Agent视图（交集），deny 优先
+- **权限申请审批**：Agent 按需申请 → 人工审批 / 自动降级 → 写入临时权限。支持两种模式：
+  - **人工审批模式**：管理员在 Web UI 审批窗口手动点击允许/拒绝
+  - **自动降级模式**：管理员点击允许时自动标记 `[降级]`，审计日志记录告警
+- **令牌视图构建**：单Agent视图（并集）+ 多Agent视图（交集+通配符），deny 优先
 - **会话管理**：会话与令牌视图绑定，视图缓存于 Redis
-- **调用拦截**：验签 → 自调用检查 → 视图判定 → 审计记录 → 放行/拒绝
-- **权限订阅管理 UI**：`/admin` 提供可视化点击式长期令牌配置界面，从身份注册服务拉取 Agent/Tool 列表
+- **调用拦截**：验签（`json.dumps(sort_keys=True)` 统一序列化）→ 自调用检查 → 视图判定 → 审计记录 → 放行/拒绝
+- **权限订阅管理 UI**：`/admin` 三合一界面（批量注册 | 令牌订阅 | 审批窗口）
 
 ---
 
@@ -445,7 +447,8 @@ POST /tasks/{task_id}/finalize
 | `POST` | `/tasks/{task_id}/permission-requests` | Agent 提交权限申请 | Agent 签名 |
 | `GET` | `/tasks/{task_id}/permission-requests` | 查看任务的所有权限申请 | 管理 API Key |
 | `GET` | `/tasks/{task_id}/permission-requests/{req_id}` | 查看单个申请详情 | 管理 API Key |
-| `POST` | `/tasks/{task_id}/permission-requests/{req_id}/approve` | 审批申请 | 管理 API Key |
+| `POST` | `/tasks/{task_id}/permission-requests/{req_id}/approve` | 审批申请（支持 action: approve / reject / auto_approve） | 管理 API Key |
+| `GET` | `/admin/pending-requests` | 列出所有待审批权限申请 | 无（全局查询） |
 
 ### 8.4 运行时接口
 
@@ -454,15 +457,21 @@ POST /tasks/{task_id}/finalize
 | `POST` | `/gateway/call` | 统一 MCP/A2A 调用入口（核心拦截点） | Agent 签名 |
 | `GET` | `/sessions/{session_id}/view` | 查询会话的令牌视图 | 服务间 API Key |
 
-### 8.5 权限订阅管理 UI
+### 8.5 权限订阅管理 UI（三合一界面）
 
 | 方法 | 路径 | 功能 | 认证 |
 |------|------|------|------|
-| `GET` | `/admin` | 权限订阅管理 Web UI 页面 | 无 |
-| `GET` | `/admin/agents` | 代理查询已注册 Agent 列表 | 无（内部使用 Admin Key 代理） |
-| `GET` | `/admin/tools` | 代理查询已注册 Tool 列表 | 无（内部使用 Admin Key 代理） |
+| `GET` | `/admin` | 权限订阅管理 Web UI 页面（双Tab+审批窗口） | 无 |
+| `GET` | `/admin/agents` | 代理查询已注册 Agent 列表 | 无 |
+| `GET` | `/admin/tools` | 代理查询已注册 Tool 列表 | 无 |
+| `GET` | `/admin/pending-requests` | 列出所有待审批权限申请 | 无 |
 
-> 管理 UI 页面（`static/admin.html` + `admin.js`）从身份注册服务拉取 Agent/Tool 列表，提供点击式可视化长期令牌配置。JS 提取到独立文件避免内联 script 标签解析问题。
+> 管理 UI 三个功能区域：
+> - 📋 **批量注册**：上传 manifest.json → 一键注册 Agent+Tool → 注入执行层凭证
+> - 🔑 **令牌订阅**：点击式可视化长期令牌配置
+> - ⏳ **审批窗口**：人工审批/自动降级双模式，5秒轮询刷新
+> 
+> JS 提取到 `admin.js` 独立文件。
 
 ---
 

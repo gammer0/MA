@@ -99,6 +99,8 @@
 | 查看申请详情 | `GET` | `/tasks/{task_id}/permission-requests/{req_id}` | 审查申请内容 |
 | 审批通过 | `POST` | `/tasks/{task_id}/permission-requests/{req_id}/approve` `{"action":"approve",...}` | 可裁剪条目、缩短 TTL |
 | 审批拒绝 | `POST` | `/tasks/{task_id}/permission-requests/{req_id}/approve` `{"action":"reject",...}` | 拒绝并记录原因 |
+| 自动降级 | `POST` | `/tasks/{task_id}/permission-requests/{req_id}/approve` `{"action":"auto_approve",...}` | 自动批准+告警 `[降级]` |
+| 查看待审批列表 | `GET` | `/admin/pending-requests` | 全局列出所有待处理申请 |
 
 ### 3.4 审计查询（审计模块 :8003）
 

@@ -4,6 +4,7 @@ let selectedAgent = null;
 let currentTokenId = null;
 let currentEntries = {};
 let adminApiKey = '';
+let manifestData = null;
 
 function getApiKey() {
   if (!adminApiKey) {
@@ -12,10 +13,131 @@ function getApiKey() {
   return adminApiKey;
 }
 
-async function init() {
+// ============================================================
+// Tab 切换
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('.nav a[data-tab]').forEach(a => a.classList.remove('active'));
+  document.querySelector(`.nav a[data-tab="${name}"]`).classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'tokens') initTokenTab();
+}
+
+// ============================================================
+// 批量注册
+// ============================================================
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      manifestData = JSON.parse(e.target.result);
+      const aCount = manifestData.agents ? manifestData.agents.length : 0;
+      const tCount = manifestData.tools ? manifestData.tools.length : 0;
+      document.getElementById('register-status').textContent = 
+        `✅ 文件已加载: ${aCount} 个 Agent, ${tCount} 个 Tool (v${manifestData.version || '?'})`;
+      document.getElementById('btn-register').disabled = false;
+      addRegLog('ok', `📁 加载 manifest: ${manifestData.description || '无描述'}`);
+    } catch(err) {
+      document.getElementById('register-status').textContent = '❌ JSON 解析失败: ' + err.message;
+      addRegLog('err', '❌ 文件格式错误');
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function batchRegister() {
+  if (!manifestData) return;
+  const btn = document.getElementById('btn-register');
+  btn.disabled = true; btn.textContent = '注册中...';
+  document.getElementById('progress').style.width = '20%';
+  addRegLog('ok', '🚀 开始注册...');
+
+  const apiKey = getApiKey();
+  if (!apiKey) { addRegLog('err', '❌ 请先输入 Admin API Key'); return; }
+
+  const baseUrl = window.location.origin.replace(':8002', ':8001');
+  let okA = 0, okT = 0;
+
+  // 注册 Agent
+  for (const agent of manifestData.agents || []) {
+    try {
+      const r = await fetch(baseUrl + '/agents/register', {
+        method: 'POST', headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+        body: JSON.stringify({agent_name:agent.agent_name,agent_type:agent.agent_type,owner:agent.owner||'default'})
+      });
+      if (r.ok) {
+        const d = await r.json();
+        agent._registered_id = d.agent_id;
+        agent._private_key = d.private_key_pem;
+        okA++;
+        addRegLog('ok', `✅ Agent: ${agent.agent_name} → ${d.agent_id.substring(0,8)}...`);
+      } else {
+        addRegLog('err', `❌ Agent ${agent.agent_name}: HTTP ${r.status}`);
+      }
+    } catch(e) { addRegLog('err', `❌ Agent ${agent.agent_name}: ${e.message}`); }
+  }
+  document.getElementById('progress').style.width = '50%';
+
+  // 注册 Tool
+  for (const tool of manifestData.tools || []) {
+    try {
+      const r = await fetch(baseUrl + '/tools/register', {
+        method: 'POST', headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+        body: JSON.stringify({tool_name:tool.tool_name,tool_owner:tool.tool_owner,description:tool.description||''})
+      });
+      if (r.ok || r.status === 409) { okT++; addRegLog('ok', `✅ Tool: ${tool.tool_name} (${tool.tool_owner})`); }
+      else { addRegLog('err', `❌ Tool ${tool.tool_name}: HTTP ${r.status}`); }
+    } catch(e) { addRegLog('err', `❌ Tool ${tool.tool_name}: ${e.message}`); }
+  }
+  document.getElementById('progress').style.width = '80%';
+
+  // 注入凭证到执行层
+  const execUrl = window.location.origin.replace(':8002', ':8004');
+  const payload = {};
+  for (const agent of manifestData.agents || []) {
+    if (agent._registered_id && agent._private_key) {
+      payload[agent.agent_name] = {agent_id: agent._registered_id, private_key: agent._private_key};
+    }
+  }
+  if (Object.keys(payload).length > 0) {
+    try {
+      const r = await fetch(execUrl + '/admin/keys', {
+        method: 'POST', headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+        body: JSON.stringify(payload)
+      });
+      if (r.ok) addRegLog('ok', '✅ 凭证已注入执行层 (demo-app)');
+      else addRegLog('warn', '⚠️ 凭证注入失败: HTTP ' + r.status);
+    } catch(e) { addRegLog('warn', '⚠️ 无法连接执行层: ' + e.message); }
+  }
+  document.getElementById('progress').style.width = '100%';
+  btn.textContent = '注册完成'; 
+  addRegLog('ok', `🎉 完成! Agent ${okA}/${manifestData.agents?.length||0}, Tool ${okT}/${manifestData.tools?.length||0}`);
+  document.getElementById('register-hint').textContent = '注册完成，切换到「令牌订阅」配置权限';
+}
+
+function addRegLog(cls, msg) {
+  const el = document.getElementById('register-log');
+  el.innerHTML += `<div class="${cls}">${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function initTokenTab() {
+  if (agents.length === 0) loadAgentsAndTools();
+}
+
+async function loadAgentsAndTools() {
   await Promise.all([loadAgents(), loadTools()]);
   renderAgentList();
 }
+
+async function init() {
+  // 默认显示注册面板，不自动加载令牌数据
+}
+
+// init() called at end of file
 
 async function loadAgents() {
   try {

@@ -420,12 +420,15 @@ async def handle_approve_permission_request(
         })
         return {"message": "Permission request rejected."}
 
-    if request.action == "approve":
+    if request.action == "approve" or request.action == "auto_approve":
         # 裁剪 TTL
         ttl = min(request.ttl_seconds, req.requested_ttl, MAX_TEMP_PERMISSION_TTL)
         approved_json = json.dumps(request.approved_entries)
 
-        await approve_permission_request(conn, req_id, "admin", approved_json, ttl, request.comment)
+        reviewer = "admin" if request.action == "approve" else "auto_approve"
+        comment = request.comment or ("[降级] 自动批准（原需人工审批）" if request.action == "auto_approve" else "")
+
+        await approve_permission_request(conn, req_id, reviewer, approved_json, ttl, comment)
 
         # 创建 TaskPermissionEntry
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
@@ -443,7 +446,7 @@ async def handle_approve_permission_request(
             )
             await add_task_permission(conn, entry)
 
-        # 清除该任务该 Agent 相关的 Redis 视图缓存
+        # 清除 Redis 视图缓存
         session_ids = await get_task_active_sessions(conn, task_id)
         for sid in session_ids:
             await invalidate_session_view(redis, sid)
@@ -456,11 +459,11 @@ async def handle_approve_permission_request(
             "event_type": "approved",
             "approved_entries": request.approved_entries,
             "approved_ttl": ttl,
-            "reviewed_by": "admin",
-            "review_comment": request.comment,
+            "reviewed_by": reviewer,
+            "review_comment": comment,
         })
 
-        return {"message": "Permission request approved.", "ttl": ttl}
+        return {"message": "Permission request approved.", "ttl": ttl, "approval_mode": request.action}
 
     raise HTTPException(status_code=400, detail="Invalid action")
 

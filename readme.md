@@ -11,27 +11,29 @@
 ### 一键启动
 
 ```bash
-# 1. 启动所有服务
+# 1. 启动 Docker 安全服务（身份/权限/审计）
 cd docker
-docker compose up -d
+docker compose --env-file ../.env up -d
 
-# 2. 等待服务就绪（约 10 秒）
-# 检查状态：docker compose ps
+# 2. 启动飞书 Demo（宿主机，:8005）
+cd ../feishu-demo-app
+python main.py &
 
-# 3. 批量注册 Agent 和 Tool（首次）
+# 3. 等待服务就绪（约 10 秒）
+# 检查：docker compose ps && curl localhost:8005/health
+
+# 4. 批量注册 + 自动注入凭证（注册完成后自动向 :8005 注入密钥）
 cd ..
 python scripts/batch_register.py \
-  --manifest scripts/agent_tool_manifest.json \
+  --manifest scripts/agent_tool_manifest_feishu.json \
   --api-key admin-secret-key-dev \
   --url http://localhost:8001
 
-# 4. 打开权限管理界面配置令牌
-# http://localhost:8002/admin
-# 点击「🔑 令牌订阅」，为每个 Agent 配置 allow/deny 权限，点击保存
+# 5. 配置令牌（管理 UI 或 SQL）
+# http://localhost:8002/admin → 「🔑 令牌订阅」
 
-# 5. 打开执行层控制台执行任务
-# http://localhost:8004
-# 输入自然语言指令，点击「执行任务」
+# 6. 执行任务验证
+# http://localhost:8005 → 输入指令 → 点击执行
 ```
 
 ### 服务端口

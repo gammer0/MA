@@ -636,11 +636,25 @@ async def handle_execute_task(request: ExecuteTaskRequest) -> TaskResponse:
 async def handle_get_task_status(task_id: str) -> TaskStatusResponse:
     """GET /tasks/{task_id}/status"""
 
-async def handle_get_task_result(task_id: str) -> TaskResultResponse:
-    """GET /tasks/{task_id}/result"""
-
 async def websocket_task_events(websocket: WebSocket, task_id: str):
     """WS /ws/tasks/{task_id} — 实时推送执行状态和审计日志"""
+
+async def _push_event(task_id: str, event: dict):
+    """向任务的所有 WebSocket 连接推送事件"""
+```
+
+### 9.11 `execution_layer/main.py` — 凭证管理
+
+```python
+# 凭证三层优先级: 运行时注入 > 环境变量 > 默认值
+_runtime_keys: dict = {}
+
+def inject_keys(keys: dict):
+    """运行时注入 Agent 凭证（由 batch_register.py 调用）"""
+
+@app.post("/admin/keys")
+async def admin_inject_keys(request: Request):
+    """POST /admin/keys — 注入后立即清除 _runtime_keys（用后即焚）"""
 ```
 
 ---
@@ -658,5 +672,7 @@ async def websocket_task_events(websocket: WebSocket, task_id: str):
 | Web 交互 | 自然语言 + Web UI (纯 HTML/JS) | 无前端框架依赖 |
 | 实时推送 | WebSocket (5种事件类型) | trace_update/audit_log/task_completed/task_result/task_failed |
 | 前端四大面板 | 调用链+审计日志+安全事件+任务结果 | 从审计模块API拉取真实数据 |
-| Orchestrator | 进程内持有Worker引用 | call_agent过网关后直接调worker方法 |
-| JS提取 | admin.js独立文件 | 避免内联script标签解析问题 |
+| Orchestrator | 进程内持有Worker引用 | call_agent 过网关后直接调 worker 方法 |
+| JS提取 | admin.js 独立文件 | 避免内联 script 标签解析问题 |
+| 凭证传递 | 运行时热注入 + 用后即焚 | batch_register.py → POST /admin/keys → 注入后清空全局变量 |
+| 凭证优先级 | 运行时注入 > 环境变量 > 默认值 | 支持开发/生产灵活切换 |

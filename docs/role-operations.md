@@ -26,6 +26,7 @@
 | 恢复数据库 | PostgreSQL | `pg_restore < backup.sql` |
 | 编写/更新执行层 Agent | 执行层 | 新增或修改 Agent 代码和 Tool 实现 |
 | 向管理员移交 Agent-Tool 清单 | 执行层 | 提供当前版本的 Agent 列表和 Tool 列表，供管理员注册 |
+| 执行批量注册 + 凭证注入 | 全部 | `python batch_register.py --manifest agent_tool_manifest.json --api-key "xxx"`（自动注册并注入凭证到执行层） |
 
 ### 2.1 Agent-Tool 清单移交
 
@@ -50,13 +51,11 @@
 | `calc` | analyzer | 数据计算（analyzer 自有） |
 | `chart_gen` | analyzer | 图表生成（analyzer 自有） |
 
-> **自动化注册**：管理员拿到清单后，使用 `scripts/batch_register.py` 一键完成所有 Agent 和 Tool 的注册。
-> ```
-> python batch_register.py --manifest agent_tool_manifest.json --api-key "xxx" --url http://localhost:8001
-> ```
-> 注册结果写入 `batch_register_output.json`（含 agent_id 和 private_key_pem）。
+> **自动化注册**：管理员拿到清单后，执行 `python scripts/batch_register.py` 一键完成所有 Agent 和 Tool 的注册。
 > 
-> **人工配置**：长期令牌包含 `allow`/`deny` 安全决策，需管理员根据系统安全策略手动创建。
+> **凭证传递**：注册完成后脚本自动调 `POST /admin/keys` 将私钥直接注入执行层内存，无需中间文件传递。私钥注入后立即清除全局变量（用后即焚）。
+>
+> **凭证优先级**：运行时注入 > 环境变量 `AGENT_*_ID` / `AGENT_*_PRIVATE_KEY` > Dockerfile 默认值。
 
 ---
 

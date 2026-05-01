@@ -11,7 +11,7 @@
 - **权限申请审批**：Agent 按需申请 → 人工审批 / 自动降级 → 写入临时权限。支持两种模式：
   - **人工审批模式**：管理员在 Web UI 审批窗口手动点击允许/拒绝
   - **自动降级模式**：管理员点击允许时自动标记 `[降级]`，审计日志记录告警
-- **令牌视图构建**：单Agent视图（并集）+ 多Agent视图（交集+通配符），deny 优先
+- **令牌视图构建**：单Agent视图（并集）+ 多Agent视图（交集+隐式self条目），deny 优先
 - **会话管理**：会话与令牌视图绑定，视图缓存于 Redis
 - **调用拦截**：验签（`json.dumps(sort_keys=True)` 统一序列化）→ 自调用检查 → 视图判定 → 审计记录 → 放行/拒绝
 - **权限订阅管理 UI**：`/admin` 三合一界面（批量注册 | 令牌订阅 | 审批窗口）
@@ -30,7 +30,7 @@
 │  ├── entries: [TokenEntry, ...]                 │
 │  │     ├── effect: allow | deny                 │
 │  │     ├── object_type: agent | mcp_tool        │
-│  │     ├── object_id: 目标ID，支持 "*"          │
+│  │     ├── object_id: 目标ID，精确匹配             │
 │  │     └── tool_owner: "public" | "{agent_id}"  │
 │  └── status: active | revoked                   │
 │                                                 │
@@ -69,7 +69,7 @@ class TokenEntry:
     token_id: str          # 所属令牌 ID
     effect: str            # "allow" | "deny"
     object_type: str       # "agent" | "mcp_tool"
-    object_id: str         # 目标 agent_id 或 tool_name，支持 "*" 通配
+    object_id: str         # 目标 agent_id 或 tool_name，精确匹配
     tool_owner: str        # MCP 场景："public" | "{agent_id}"；A2A 场景：""
     created_at: datetime
 ```
@@ -82,7 +82,7 @@ def match_entry(entry: TokenEntry, call_type: str,
     """判断一条权限条目是否匹配当前调用"""
     if entry.object_type != ("agent" if call_type == "a2a" else "mcp_tool"):
         return False
-    if entry.object_id != "*" and entry.object_id != object_id:
+    if entry.object_id != object_id:
         return False
     if call_type == "mcp":
         if entry.tool_owner != tool_owner:
@@ -208,36 +208,44 @@ async def build_agent_view(conn, agent_id: str, task_id: str | None) -> TokenVie
 async def build_multi_agent_view(conn, caller_id: str, callee_id: str,
                                   task_id: str | None) -> TokenView:
     """
-    多 Agent 视图 = caller视图 ∩ callee视图
-    
-    交集逻辑：
-    - allow 条目：取双方都允许的（取交集），支持 "*" 通配符
-    - deny 条目：任一方的 deny 直接加入最终视图（deny 优先）
-    
-    * 通配符交集规则：若 caller 的条目为 (agent, "*")，callee 的条目为 (agent, "具体ID")，则交集取 (agent, "具体ID")
+    多 Agent 视图 = caller令牌视图 ∩ callee长期令牌(StandardToken) ∪ callee任务临时权限
+
+    交集规则（按 (type, object_id, tool_owner) 逐对）:
+      caller条目 | callee条目 | 结果
+      deny       | *          | deny   (任一方 deny 即 deny)
+      allow      | deny       | deny
+      allow      | unset      | 不构建 (隐式拒绝, 需申请临时权限)
+      allow      | allow      | allow
+      unset      | *          | 不构建 (隐式拒绝)
+
+    特殊规则:
+    - callee 默认具有隐式条目 allow agent: callee_id (允许任何人调用自己, 除非被 deny 覆盖)
+    - callee 任务临时权限直接追加到最终视图（审批时已校验 deny 不会被绕过）
     """
     caller_view = await build_agent_view(conn, caller_id, task_id)
-    callee_view = await build_agent_view(conn, callee_id, task_id)
-    
-    # 收集双方的 deny 条目（任一方的 deny 都生效）
-    final_deny = [e for e in caller_view.entries if e.effect == "deny"]
-    final_deny += [e for e in callee_view.entries if e.effect == "deny"]
-    
-    # allow 条目取交集
-    caller_allow = {(e.object_type, e.object_id, e.tool_owner) 
-                    for e in caller_view.entries if e.effect == "allow"}
-    callee_allow = {(e.object_type, e.object_id, e.tool_owner) 
-                    for e in callee_view.entries if e.effect == "allow"}
-    intersection = caller_allow & callee_allow
-    
-    final_entries = final_deny
-    for obj_type, obj_id, tool_owner in intersection:
-        final_entries.append(TokenEntry(
-            effect="allow", object_type=obj_type,
-            object_id=obj_id, tool_owner=tool_owner
-        ))
-    
-    return TokenView(entries=final_entries)
+    callee_standard = await _build_standard_only_view(conn, callee_id)
+
+    # callee 隐式: 默认允许被调用
+    callee_idx[("agent", callee_id, "")] = "allow"  # 仅当未显式设置时
+
+    # 交集: deny 优先, allow 需双方都 allow
+    final_deny = [...]  # 任一方 deny
+    final_allow = [...] # 双方都是 allow (含 callee 隐式条目)
+
+    # callee 任务临时权限直接并集
+    callee_task = await get_task_permissions(conn, task_id, callee_id)
+
+    return TokenView(entries=final_deny + final_allow + callee_task)
+```
+
+#### 临时权限 deny 保护
+
+审批通过创建临时权限前，检查申请的条目是否被 callee 的现有令牌 deny 覆盖：
+
+```python
+denied = await check_temp_permission_denied(conn, agent_id, task_id, entries)
+if denied:
+    raise HTTPException(409, "Cannot approve: entry is explicitly denied.")
 ```
 
 ### 4.3 视图缓存策略
@@ -297,6 +305,7 @@ POST /gateway/call
   │     │   └── 命中 allow → 放行 200
   │     └── 无匹配 → 403 { can_request: true, reason: "permission_required",
   │                         missing_entries: [...], 
+  │                         message: "{agent传入的reason}",
   │                         request_url: "/tasks/{task_id}/permission-requests" }
   │
   ├── ⑥ 审计记录（异步，不阻塞）
@@ -352,7 +361,7 @@ Agent B 尝试调 tool_x
   │    {
   │        "agent_id": "agent-b",
   │        "task_id": "task-001",
-  │        "reason": "需要读取配置文件以完成数据分析",
+  │        "reason": "生成数据可视化图表",          // ← 来自 Agent SDK call_mcp_tool(reason=...)
   │        "requested_entries": [
   │            { "effect": "allow", "object_type": "mcp_tool",
   │              "object_id": "tool_x", "tool_owner": "public" }
@@ -491,6 +500,7 @@ Body:
 {
     "call_type": "mcp",           // "mcp" | "a2a"
     "task_id": "task-001",
+    "reason": "读取配置文件",      // (可选) Agent 传入的调用意图
     
     // === MCP 场景 ===
     "tool_name": "file_read",
@@ -833,7 +843,8 @@ TTL:   会话时长（默认 300s）
 | **任务结束清理** | finalize 物理删除所有临时权限 + 清除视图缓存 |
 | **TTL 兜底** | 即使忘记 finalize，过期条目自动过滤 |
 | **审计追踪** | 权限申请 → 审批 → 临时权限创建 → 全链路可追溯 |
-| **通配符告警** | 通配符 `"*"` 不阻止但记录告警日志 |
+| **Agent 意图** | SDK 调用时可选传入 reason，审批面板展示人类可读意图 |
+| **精确匹配** | 仅支持精确 object_id 匹配，无通配符 |
 
 ---
 

@@ -125,7 +125,8 @@ function addRegLog(cls, msg) {
 }
 
 function initTokenTab() {
-  if (agents.length === 0) loadAgentsAndTools();
+  if (agents.length === 0 || !_agentsLoaded) loadAgentsAndTools();
+  else renderAgentList();
 }
 
 async function loadAgentsAndTools() {
@@ -155,8 +156,9 @@ async function loadTools() {
 
 function renderAgentList() {
   const el = document.getElementById('agent-list');
-  if (!agents.length) { el.innerHTML = '<div class="empty">暂无 Agent</div>'; return; }
-  el.innerHTML = agents.map(a => `
+  const activeAgents = agents.filter(a => a.status === 'active');
+  if (!activeAgents.length) { el.innerHTML = '<div class="empty">暂无活跃 Agent</div>'; return; }
+  el.innerHTML = activeAgents.map(a => `
     <div class="agent-item" data-id="${a.agent_id}" onclick="selectAgent('${a.agent_id}')">
       <span>🤖</span>
       <div>
@@ -205,8 +207,8 @@ function renderConfigPanel() {
   const publicTools = tools.filter(t => t.tool_owner === 'public');
   const ownTools = tools.filter(t => t.tool_owner === a.agent_name);
   const otherTools = tools.filter(t => t.tool_owner !== 'public' && t.tool_owner !== a.agent_name);
-  // 其他 Agent
-  const otherAgents = agents.filter(ag => ag.agent_id !== a.agent_id);
+  // 其他 Agent（仅 active 且非自身）
+  const otherAgents = agents.filter(ag => ag.status === 'active' && ag.agent_id !== a.agent_id);
 
   document.getElementById('config-panel').innerHTML = `
     <h2>⚙️ ${a.agent_name} (${a.agent_type})</h2>
@@ -406,36 +408,111 @@ function setApprovalMode(mode) {
 
 let pendingRequestsCache = [];
 
+function resolveAgentName(agentId) {
+  // 先按 agent_id 精确匹配
+  const a = agents.find(ag => ag.agent_id === agentId);
+  if (a) return a.agent_name;
+  // 再按 agent_name 匹配（tool_owner 可能是 name）
+  const b = agents.find(ag => ag.agent_name === agentId);
+  if (b) return b.agent_name;
+  return agentId.substring(0,8) + '...';
+}
+
+function resolveEntryLabel(entry) {
+  const ot = entry.object_type;
+  const oid = entry.object_id;
+  const owner = entry.tool_owner || '';
+  if (ot === 'agent') {
+    const name = resolveAgentName(oid);
+    return `调 Agent「${name}」`;
+  }
+  // mcp_tool
+  const ownerLabel = owner === 'public' ? '公共工具' : resolveAgentName(owner) + '的工具';
+  return `用 ${ownerLabel}「${oid}」`;
+}
+
+function resolveReason(req) {
+  // reason 格式: "Agent {agent_id} 需要权限 [{...}]"
+  // 解析为: "{agent_name} 想要 {意图描述}"
+  const agentName = resolveAgentName(req.agent_id);
+  const entries = (req.requested_entries || [])
+    .map(e => resolveEntryLabel(e))
+    .join('、');
+  if (entries) {
+    return `${agentName} 想要 ${entries}`;
+  }
+  return req.reason || `${agentName} 申请临时权限`;
+}
+
 async function refreshPendingRequests() {
   try {
     const r = await fetch('/admin/pending-requests');
-    pendingRequestsCache = await r.json();
+    const newRequests = await r.json();
     const el = document.getElementById('pending-list');
-    if (!pendingRequestsCache.length) {
+    if (!newRequests.length) {
+      el.innerHTML = '<div class="empty">暂无待审批请求</div>';
+      pendingRequestsCache = [];
+      return;
+    }
+
+    // 自动审批模式：新请求自动批准
+    if (approvalMode === 'auto') {
+      for (const req of newRequests) {
+        const cached = pendingRequestsCache.find(c => c.request_id === req.request_id);
+        if (!cached) {
+          // 新请求，自动批准
+          await autoApproveRequest(req);
+        }
+      }
+    }
+
+    pendingRequestsCache = newRequests;
+    // 在自动模式下，已批准的会在 approveRequest 中移除，所以可能为空
+    const remaining = pendingRequestsCache.filter(r => r._auto_handled !== true);
+    if (!remaining.length) {
       el.innerHTML = '<div class="empty">暂无待审批请求</div>';
       return;
     }
-    el.innerHTML = pendingRequestsCache.map(req => `
+    el.innerHTML = remaining.map(req => `
       <div class="pending-item" id="req-${req.request_id}">
         <div class="pending-header">
-          <span>🔔 ${req.agent_id.substring(0,8)}...</span>
+          <span>🔔 ${resolveAgentName(req.agent_id)}</span>
           <span class="pending-time">${new Date(req.created_at).toLocaleTimeString()}</span>
         </div>
-        <div class="pending-reason">📝 ${req.reason || '无理由'}</div>
-        <div class="pending-entries">请求权限: ${req.requested_entries.map(e => e.object_id + '(' + e.tool_owner + ')').join(', ')}</div>
+        <div class="pending-reason">📝 ${resolveReason(req)}</div>
         <div class="btn-row" style="margin-top:8px">
           <button class="btn btn-primary btn-sm" onclick="approveRequest('${req.request_id}', '${req.task_id}')">✅ 允许</button>
           <button class="btn btn-danger btn-sm" onclick="rejectRequest('${req.request_id}', '${req.task_id}')">❌ 拒绝</button>
         </div>
       </div>
     `).join('');
-  } catch(e) {}
+  } catch(e) { console.error('refreshPendingRequests error:', e); }
+}
+
+async function autoApproveRequest(req) {
+  const apiKey = getApiKey();
+  if (!apiKey) return;
+  try {
+    const r = await fetch(`/tasks/${req.task_id}/permission-requests/${req.request_id}/approve`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+      body: JSON.stringify({
+        action: 'auto_approve',
+        approved_entries: req.requested_entries || [],
+        ttl_seconds: req.requested_ttl || 300,
+        comment: '[降级] 自动批准（无需人工审批）'
+      })
+    });
+    if (r.ok) {
+      req._auto_handled = true;
+      console.log('auto-approved:', req.request_id.substring(0,8));
+    }
+  } catch(e) { console.error('auto-approve error:', e); }
 }
 
 async function approveRequest(reqId, taskId) {
   const apiKey = getApiKey();
   if (!apiKey) return;
-  // 从缓存中找到请求的 entries
   const cached = pendingRequestsCache.find(r => r.request_id === reqId);
   if (!cached) return;
   const action = approvalMode === 'auto' ? 'auto_approve' : 'approve';
@@ -452,9 +529,9 @@ async function approveRequest(reqId, taskId) {
     });
     if (r.ok) {
       showToast('已批准' + (action === 'auto_approve' ? ' [降级]' : ''), 'success');
+      cached._auto_handled = true;
       const el = document.getElementById('req-' + reqId);
       if (el) el.remove();
-      pendingRequestsCache = pendingRequestsCache.filter(r => r.request_id !== reqId);
     } else {
       const err = await r.text();
       showToast('操作失败: ' + err.substring(0,100), 'error');
@@ -480,5 +557,13 @@ async function rejectRequest(reqId, taskId) {
 
 // 每5秒自动刷新
 setInterval(refreshPendingRequests, 5000);
+
+let _agentsLoaded = false;
+
+// 页面加载时预加载 agents 和 tools（用于审批面板标签解析）
+(async function preload() {
+  await Promise.all([loadAgents(), loadTools()]);
+  _agentsLoaded = true;
+})();
 
 init();

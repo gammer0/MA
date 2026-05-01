@@ -17,6 +17,7 @@ class SearcherAgent(BaseWorker):
             tool_args={"query": query},
             task_id=task_id,
             parent_session_id=parent_session_id,
+            reason=f"搜索 \"{query[:40]}\" 相关信息",
         )
 
         # 第二步：获取第一个结果（演示正常 MCP 自有工具调用）
@@ -27,6 +28,7 @@ class SearcherAgent(BaseWorker):
                 tool_args={"url": search_result["results"][0]},
                 task_id=task_id,
                 parent_session_id=parent_session_id,
+                reason="获取搜索结果页面详情",
             )
             return {"query": query, "search": search_result, "page": page_result}
 

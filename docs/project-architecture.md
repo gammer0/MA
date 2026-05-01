@@ -75,7 +75,7 @@ MA/
 │   │   ├── token_manager.py                 # Standard Token 的 CRUD
 │   │   ├── task_permissions.py              # 任务临时权限管理
 │   │   ├── permission_requests.py           # 权限申请与审批
-│   │   ├── view_builder.py                  # 令牌视图构建（并集/交集，支持通配符）
+│   │   ├── view_builder.py                  # 令牌视图构建（单Agent并集 / A2A交集+隐式self）
 │   │   ├── session_manager.py               # 会话生命周期管理
 │   │   ├── identity_client.py               # 调身份注册服务验签的 HTTP 客户端
 │   │   ├── audit_client.py                  # 向审计模块发送记录的 HTTP 客户端

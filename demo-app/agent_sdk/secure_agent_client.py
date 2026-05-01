@@ -40,8 +40,12 @@ class SecureAgentClient:
         message: dict,
         task_id: str,
         parent_session_id: Optional[str] = None,
+        reason: str = "",
     ) -> dict:
-        """调用另一个 Agent（A2A）。"""
+        """调用另一个 Agent（A2A）。
+        
+        reason: 调用意图，用于审批面板展示。如 "需要搜索数据"。
+        """
         session_id = str(uuid.uuid4())
         call_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -54,6 +58,7 @@ class SecureAgentClient:
             "tool_args": {},
             "callee_agent_id": callee_agent_id,
             "message": message,
+            "reason": reason,
         }
         return await self._make_call(session_id, call_id, timestamp, request_body, parent_session_id)
 
@@ -64,8 +69,12 @@ class SecureAgentClient:
         tool_args: dict,
         task_id: str,
         parent_session_id: Optional[str] = None,
+        reason: str = "",
     ) -> dict:
-        """调用 MCP 工具。"""
+        """调用 MCP 工具。
+        
+        reason: 调用意图，用于审批面板展示。如 "生成分析图表"。
+        """
         session_id = str(uuid.uuid4())
         call_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -78,6 +87,7 @@ class SecureAgentClient:
             "tool_args": tool_args,
             "callee_agent_id": "",
             "message": {},
+            "reason": reason,
         }
         return await self._make_call(session_id, call_id, timestamp, request_body, parent_session_id)
 
@@ -127,16 +137,19 @@ class SecureAgentClient:
             if data.get("can_request", False):
                 # 自动发起权限申请
                 task_id = body.get("task_id", "")
+                # 使用 agent 传入的 reason，或 gateway 回传的 reason，或默认
+                agent_reason = body.get("reason", "") or data.get("reason", "")
+                reason_text = agent_reason or f"Agent {self.agent_id} 需要权限 {data.get('missing_entries', [])}"
                 req_id = await self.request_permission(
                     task_id=task_id,
-                    reason=f"Agent {self.agent_id} 需要权限 {data.get('missing_entries', [])}",
+                    reason=reason_text,
                     missing_entries=data.get("missing_entries", []),
                 )
                 # 等待审批
                 approved = await self.wait_for_approval(task_id, req_id)
                 if approved:
-                    # 重试
-                    return await self._make_call(session_id, call_id, timestamp, body)
+                    # 重试，使用新的 session_id 避免命中旧缓存
+                    return await self._make_call(str(uuid.uuid4()), str(uuid.uuid4()), timestamp, body)
                 raise PermissionDeniedError("Permission request was rejected.", can_request=True)
 
             raise PermissionDeniedError(

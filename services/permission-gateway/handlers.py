@@ -33,7 +33,7 @@ from permission_requests import (
     list_permission_requests, approve_permission_request,
     reject_permission_request,
 )
-from view_builder import build_agent_view, build_multi_agent_view, evaluate_view
+from view_builder import build_agent_view, build_multi_agent_view, evaluate_view, check_temp_permission_denied
 from session_manager import (
     create_session, cache_token_view, get_cached_view,
     invalidate_session_view, complete_task_sessions, get_task_active_sessions,
@@ -383,8 +383,8 @@ async def handle_get_permission_request(
         agent_id=req.agent_id,
         reason=req.reason,
         status=req.status,
-        requested_entries=req.requested_entries if isinstance(req.requested_entries, list) else [],
-        approved_entries=req.approved_entries if isinstance(req.approved_entries, list) else [],
+        requested_entries=[e.model_dump(mode="json") if hasattr(e, 'model_dump') else e for e in (req.requested_entries if isinstance(req.requested_entries, list) else [])],
+        approved_entries=[e.model_dump(mode="json") if hasattr(e, 'model_dump') else e for e in (req.approved_entries if isinstance(req.approved_entries, list) else [])],
         requested_ttl=req.requested_ttl,
         approved_ttl=req.approved_ttl,
         reviewed_by=req.reviewed_by,
@@ -428,6 +428,14 @@ async def handle_approve_permission_request(
 
         reviewer = "admin" if request.action == "approve" else "auto_approve"
         comment = request.comment or ("[降级] 自动批准（原需人工审批）" if request.action == "auto_approve" else "")
+
+        # 检查申请条目是否被 deny 覆盖
+        denied = await check_temp_permission_denied(conn, req.agent_id, task_id, request.approved_entries)
+        if denied:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot approve: entry '{denied}' is explicitly denied by existing token."
+            )
 
         await approve_permission_request(conn, req_id, reviewer, approved_json, ttl, comment)
 
@@ -620,13 +628,14 @@ async def handle_gateway_call(
         request_permission_url=f"/tasks/{request.task_id}/permission-requests",
         missing_entries=[
             {
+                "effect": "allow",
                 "object_type": "mcp_tool" if request.call_type == "mcp" else "agent",
                 "object_id": target_id,
                 "tool_owner": request.tool_owner,
             }
         ],
         session_id=session_id,
-        message="Permission required. Submit a permission request.",
+        message=request.reason or "Permission required. Submit a permission request.",
     )
 
 

@@ -41,6 +41,7 @@ class OrchestratorAgent(SecureAgentClient):
                     callee_agent_id=self.searcher_id,
                     message={"action": "search", "query": instruction},
                     task_id=task_id,
+                    reason=f"搜索 \"{instruction[:50]}\" 相关数据",
                 )
                 add_trace("orchestrator", "searcher", "A2A", "allowed")
                 search_data = await self._searcher.search(instruction, task_id)
@@ -58,6 +59,7 @@ class OrchestratorAgent(SecureAgentClient):
                     callee_agent_id=self.analyzer_id,
                     message={"action": "analyze", "data": search_data},
                     task_id=task_id,
+                    reason="分析搜索结果并生成报告",
                 )
                 add_trace("orchestrator", "analyzer", "A2A", "allowed")
                 analysis_data = await self._analyzer.analyze(search_data, task_id)
@@ -79,6 +81,7 @@ class OrchestratorAgent(SecureAgentClient):
                 tool_owner="public",
                 tool_args={"path": f"/reports/{task_id}.md", "content": report_content},
                 task_id=task_id,
+                reason="将分析报告写入文件",
             )
             add_trace("orchestrator", "file_write", "MCP(公共)", "allowed")
             result["report"] = report

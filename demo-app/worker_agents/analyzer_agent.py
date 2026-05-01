@@ -18,6 +18,7 @@ class AnalyzerAgent(BaseWorker):
             tool_args={"data": data},
             task_id=task_id,
             parent_session_id=parent_session_id,
+            reason="对搜索数据进行计算分析",
         )
 
         # 如果需要补充搜索（演示非编排器 A2A - 场景6）
@@ -28,6 +29,7 @@ class AnalyzerAgent(BaseWorker):
                     message={"action": "search", "query": calc_result.get("missing_topic", "")},
                     task_id=task_id,
                     parent_session_id=parent_session_id,
+                    reason="补充搜索缺失数据",
                 )
                 calc_result["supplement"] = search_result
             except PermissionDeniedError as e:
@@ -41,6 +43,7 @@ class AnalyzerAgent(BaseWorker):
                 tool_args={"data": calc_result},
                 task_id=task_id,
                 parent_session_id=parent_session_id,
+                reason="生成数据可视化图表",
             )
             calc_result["chart"] = chart
         except PermissionDeniedError as e:

@@ -25,3 +25,46 @@
 4. 严禁随意扩展功能，项目对于过于边界的安全问题，假设不会出现问题，留给外围安全系统，仅作危险预警告知
 5. 项目推进多做细节交流，细节到函数功能讨论
 6. ...
+
+---
+
+## 修复记录
+
+### 2026-05-01
+
+#### 1. 审批无响应 + 人类可读标签
+- **问题**：自动审批模式下新请求不会自动批准；审批面板显示的 agent_id 为 UUID，不易阅读
+- **修复**：
+  - `admin.js` 中 `refreshPendingRequests()` 在 `auto` 模式下对新请求自动调用 `autoApproveRequest()`
+  - 新增 `resolveAgentName()` 和 `resolveEntryLabel()` 将 UUID 映射为 agent 名称
+  - 页面加载时预加载 `agents`/`tools` 数组确保标签可解析
+  - `missing_entries` 添加 `effect` 字段修复 Pydantic 校验错误
+
+#### 2. 多Agent视图改为前向交集
+- **问题**：A2A 调用中 caller 和 callee 的 allow 条目取交集，导致 caller 有权限但 callee 没有对应 agent 条目时被误拒绝
+- **修复**：`build_multi_agent_view()` 改为前向交集：
+  - caller 的 allow 条目全部保留（不再与 callee 取交集）
+  - callee 的 deny 条目合并（callee 仍可拒绝被调用）
+  - callee 的 allow 条目不参与判断
+
+#### 3. 人工审批无限循环
+- **问题**：审批通过后 SDK 重试使用相同 `session_id`，Redis 缓存命中旧视图（不含新创建的 `TaskPermissionEntry`），导致再次 `permission_required` → 无限循环
+- **修复**：SDK `secure_agent_client.py` 重试时生成新的 `session_id` 和 `call_id`，避免命中旧缓存
+
+#### 4. 权限订阅UI重复agent
+- **问题**：agent 列表显示了已撤销（revoked）的 agent，导致重复条目
+- **修复**：`renderAgentList()` 和 `renderConfigPanel()` 中只显示 `status === 'active'` 的 agent
+
+#### 5. 通配符删除
+- **删除**：`_match_entry` 中移除 `"*"` 通配符匹配，仅支持精确匹配
+
+#### 7. Agent 调用意图 (reason)
+- **SDK**：`call_agent` / `call_mcp_tool` 新增 `reason=""` 可选参数
+- **Gateway**：`GatewayCallRequest` 新增 `reason` 字段，`permission_required` 响应中透传
+- **执行层**：orchestrator/searcher/analyzer 所有调用点传入业务 reason
+- **审批面板**：`resolveReason` 优先使用 agent 传入的 reason，fallback 到前端生成
+- **算法**：`build_multi_agent_view` = caller令牌视图 ∩ callee长期令牌(StandardToken) ∪ callee任务临时权限
+- **交集规则**：deny优先，allow需双方都allow，其余隐式拒绝
+- **callee 隐式条目**：每个 agent 默认具有 `allow agent: callee_id`（允许任何人调用自己，除非被 deny 覆盖）
+- **临时权限 deny 保护**：审批创建临时权限前检查是否被现有deny覆盖
+- **自调用禁止**：caller == callee 直接拒绝

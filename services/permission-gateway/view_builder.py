@@ -59,68 +59,115 @@ async def build_multi_agent_view(
     task_id: Optional[str] = None,
 ) -> TokenView:
     """
-    构建多 Agent 调用视图（交集 + deny 优先）。
+    构建 A2A 多 Agent 调用视图。
 
-    交集逻辑：
-    - allow 条目：取双方都允许的（取交集）
-    - deny 条目：任一方的 deny 直接加入最终视图（deny 优先）
+    = caller令牌视图 ∩ callee长期令牌(StandardToken) ∪ callee任务临时权限
+
+    交集规则（按 (type, object_id, tool_owner) 逐对）:
+      caller条目 | callee条目 | 结果
+      deny       | *          | deny   (任一方 deny 即 deny)
+      allow      | deny       | deny
+      allow      | unset      | 不构建 (隐式拒绝, 需申请)
+      allow      | allow      | allow
+      unset      | *          | 不构建 (隐式拒绝)
+
+    特殊: callee 默认具有 allow agent: callee_id (允许被调用)
     """
     caller_view = await build_agent_view(conn, caller_id, task_id)
-    callee_view = await build_agent_view(conn, callee_id, task_id)
+    callee_standard = await _build_standard_only_view(conn, callee_id)
 
-    # 收集双方的 deny 条目（任一方的 deny 都生效）
+    # callee 任务临时权限 (不进交集, 直接追加)
+    callee_task: list[TokenEntry] = []
+    if task_id:
+        task_entries = await get_task_permissions(conn, task_id, callee_id)
+        now = datetime.now(timezone.utc)
+        for e in task_entries:
+            if e.expires_at > now:
+                callee_task.append(TokenEntry(
+                    entry_id=e.entry_id, token_id="",
+                    effect=e.effect, object_type=e.object_type,
+                    object_id=e.object_id, tool_owner=e.tool_owner,
+                    created_at=e.created_at,
+                ))
+
+    # 索引: {(type, object_id, tool_owner): effect}
+    def _index(view: TokenView) -> dict:
+        idx: dict = {}
+        for e in view.entries:
+            key = (e.object_type.value, e.object_id, e.tool_owner)
+            if key not in idx or e.effect == TokenEffect.deny:
+                idx[key] = e.effect
+        return idx
+
+    caller_idx = _index(caller_view)
+    callee_idx = _index(callee_standard)
+
+    # callee 默认允许自己被调用: 隐式 allow agent: callee_id
+    callee_self_key = ("agent", callee_id, "")
+    if callee_self_key not in callee_idx:
+        callee_idx[callee_self_key] = TokenEffect.allow
+
     final_deny: list[TokenEntry] = []
-    seen_deny = set()
-    for e in caller_view.entries:
-        if e.effect == TokenEffect.deny:
-            key = (e.object_type.value, e.object_id, e.tool_owner)
-            if key not in seen_deny:
-                seen_deny.add(key)
-                final_deny.append(e)
-    for e in callee_view.entries:
-        if e.effect == TokenEffect.deny:
-            key = (e.object_type.value, e.object_id, e.tool_owner)
-            if key not in seen_deny:
-                seen_deny.add(key)
-                final_deny.append(e)
+    final_allow: list[TokenEntry] = []
+    seen = set()
+    all_keys = set(caller_idx.keys()) | set(callee_idx.keys())
 
-    # allow 条目取交集（支持通配符 "*"）
-    caller_allow = set()
-    for e in caller_view.entries:
-        if e.effect == TokenEffect.allow:
-            caller_allow.add((e.object_type.value, e.object_id, e.tool_owner))
+    for obj_type, obj_id, tool_owner in all_keys:
+        key = (obj_type, obj_id, tool_owner)
+        if key in seen:
+            continue
+        ce = caller_idx.get(key)      # None = unset
+        ca = callee_idx.get(key)      # None = unset
 
-    callee_allow = set()
-    for e in callee_view.entries:
-        if e.effect == TokenEffect.allow:
-            callee_allow.add((e.object_type.value, e.object_id, e.tool_owner))
+        if ce == TokenEffect.deny or ca == TokenEffect.deny:
+            seen.add(key)
+            final_deny.append(TokenEntry(
+                effect=TokenEffect.deny, object_type=ObjectType(obj_type),
+                object_id=obj_id, tool_owner=tool_owner))
+        elif ce == TokenEffect.allow and ca == TokenEffect.allow:
+            seen.add(key)
+            final_allow.append(TokenEntry(
+                effect=TokenEffect.allow, object_type=ObjectType(obj_type),
+                object_id=obj_id, tool_owner=tool_owner))
+        # else: unset/* 或 allow/unset → 隐式拒绝, 不构建条目
 
-    intersection = set()
-    for ct, ci, co in caller_allow:
-        for ct2, ci2, co2 in callee_allow:
-            if ct != ct2:
-                continue
-            if co != co2:
-                continue
-            # object_id 匹配（包括通配符）
-            if ci == "*" or ci2 == "*" or ci == ci2:
-                # 取具体的那个
-                resolved_id = ci2 if ci == "*" else ci
-                intersection.add((ct, resolved_id, co))
-                break
+    # deny 优先 → allow 交集 → callee 任务临时权限
+    return TokenView(entries=list(final_deny) + final_allow + callee_task)
 
-    final_entries = list(final_deny)
-    for obj_type, obj_id, tool_owner in intersection:
-        final_entries.append(TokenEntry(
-            effect=TokenEffect.allow,
-            object_type=ObjectType(obj_type),
-            object_id=obj_id,
-            tool_owner=tool_owner,
-        ))
 
-    return TokenView(
-        entries=final_entries,
-    )
+async def _build_standard_only_view(
+    conn: AsyncConnection, agent_id: str
+) -> TokenView:
+    """构建仅含 StandardToken（长期令牌）的视图，不含任务临时权限。"""
+    entries: list[TokenEntry] = []
+    for token in await get_agent_standard_tokens(conn, agent_id):
+        entries.extend(token.entries)
+    entries.sort(key=lambda e: 0 if e.effect == TokenEffect.deny else 1)
+    return TokenView(agent_id=agent_id, entries=entries)
+
+
+async def check_temp_permission_denied(
+    conn: AsyncConnection,
+    agent_id: str,
+    task_id: str,
+    requested_entries: list[dict],
+) -> Optional[str]:
+    """
+    检查申请的临时权限条目是否被 deny 覆盖。
+    返回被 deny 阻止的条目描述（第一个），若全部通过返回 None。
+
+    检查来源：agent 的长期令牌 + 已有任务临时权限。
+    """
+    view = await build_agent_view(conn, agent_id, task_id)
+    for e_dict in requested_entries:
+        obj_type = e_dict.get("object_type", "mcp_tool")
+        obj_id = e_dict.get("object_id", "")
+        tool_owner = e_dict.get("tool_owner", "")
+        call_type = "a2a" if obj_type == "agent" else "mcp"
+        decision, _ = evaluate_view(view, call_type, obj_id, tool_owner)
+        if decision == "explicitly_denied":
+            return f"{obj_type}:{obj_id}" + (f"({tool_owner})" if tool_owner else "")
+    return None
 
 
 def evaluate_view(
@@ -151,7 +198,7 @@ def _match_entry(
     expected_type = "agent" if call_type == "a2a" else "mcp_tool"
     if entry.object_type.value != expected_type:
         return False
-    if entry.object_id != "*" and entry.object_id != object_id:
+    if entry.object_id != object_id:
         return False
     if call_type == "mcp":
         if entry.tool_owner != tool_owner:

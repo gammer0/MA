@@ -105,8 +105,8 @@
     "call_id": "uuid-of-call",
     "timestamp": "2026-04-30T10:30:00Z",
     "request_hash": "sha256(request_body)",
-    "callee_agent_id": "agent-yyy",    # A2A 场景（可为空）
-    "mcp_tool_name": "tool-xxx",       # MCP 场景（可为空）
+    "callee_agent_id": "agent-yyy",    # MCP 场景（可为空）
+    "mcp_tool_name": "tool-xxx",       # A2A 场景（可为空）
     "tool_owner": "public"             # MCP 场景：工具属主，"public" 或 "{agent_id}"
 }
 ```

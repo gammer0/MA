@@ -58,7 +58,7 @@ class TokenEntry(BaseModel):
     token_id: str = ""
     effect: TokenEffect
     object_type: ObjectType
-    object_id: str  # 目标 agent_id 或 tool_name，支持 "*"
+    object_id: str  # 目标 agent_id 或 tool_name，精确匹配
     tool_owner: str = ""  # MCP 场景："public" | "{agent_id}"；A2A：""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -206,6 +206,8 @@ class GatewayCallRequest(BaseModel):
     # A2A
     callee_agent_id: str = ""
     message: dict = Field(default_factory=dict)
+    # Agent 传入的调用意图（用于审批面板展示）
+    reason: str = ""
 
 
 # ============================================================

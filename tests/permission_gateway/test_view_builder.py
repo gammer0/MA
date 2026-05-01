@@ -50,19 +50,6 @@ class TestMatchEntry:
         assert not _match_entry(entry, "mcp", "file_write", "public")
         assert not _match_entry(entry, "mcp", "file_read", "searcher")
 
-    def test_mcp_match_wildcard_object(self):
-        """MCP: object_id 通配符 "*" 匹配任意工具"""
-        entry = TokenEntry(
-            effect=TokenEffect.allow,
-            object_type=ObjectType.mcp_tool,
-            object_id="*",
-            tool_owner="public",
-        )
-        assert _match_entry(entry, "mcp", "file_read", "public")
-        assert _match_entry(entry, "mcp", "any_tool", "public")
-        # 但 tool_owner 不匹配
-        assert not _match_entry(entry, "mcp", "file_read", "searcher")
-
     def test_a2a_match(self):
         """A2A: 精确匹配 agent_id"""
         entry = TokenEntry(
@@ -73,17 +60,6 @@ class TestMatchEntry:
         )
         assert _match_entry(entry, "a2a", "agent-b", "")
         assert not _match_entry(entry, "a2a", "agent-c", "")
-
-    def test_a2a_match_wildcard(self):
-        """A2A: object_id 通配符 "*" 匹配任意 agent"""
-        entry = TokenEntry(
-            effect=TokenEffect.allow,
-            object_type=ObjectType.agent,
-            object_id="*",
-            tool_owner="",
-        )
-        assert _match_entry(entry, "a2a", "agent-b", "")
-        assert _match_entry(entry, "a2a", "any_agent", "")
 
     def test_type_mismatch(self):
         """object_type 不匹配时返回 False"""
@@ -97,14 +73,13 @@ class TestMatchEntry:
         assert not _match_entry(entry, "mcp", "agent-b", "")
 
     def test_tool_owner_exact_no_wildcard(self):
-        """tool_owner 无通配符，必须精确匹配"""
+        """tool_owner 必须精确匹配"""
         entry = TokenEntry(
             effect=TokenEffect.allow,
             object_type=ObjectType.mcp_tool,
             object_id="file_read",
             tool_owner="public",
         )
-        # tool_owner 设计上无 "*" 通配，不匹配非 public
         assert not _match_entry(entry, "mcp", "file_read", "")
 
 

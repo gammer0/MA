@@ -85,6 +85,9 @@
 
 ## 四、权限配置预设
 
+> 注意：以下为早期设计文档中的预设。当前实现采用精确匹配（无通配符 `*`），且 A2A 视图为交集模型。
+> Agent SDK 调用时可传入 `reason` 参数用于审批面板展示调用意图。
+
 ### 长期令牌 (Standard Token) 预设
 
 ```python
@@ -95,8 +98,11 @@
     "entries": [
         {"effect": "allow", "object_type": "agent", "object_id": "searcher"},
         {"effect": "allow", "object_type": "agent", "object_id": "analyzer"},
-        {"effect": "allow", "object_type": "mcp_tool", "object_id": "*", "tool_owner": "public"},
-        {"effect": "deny",  "object_type": "agent", "object_id": "orchestrator"}  # 禁止自调用
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "file_write", "tool_owner": "public"},
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "web_search", "tool_owner": "searcher"},
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "page_fetch", "tool_owner": "searcher"},
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "calc", "tool_owner": "analyzer"},
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "chart_gen", "tool_owner": "analyzer"},
     ]
 }
 
@@ -105,11 +111,10 @@
     "agent_id": "searcher",
     "label": "搜索器基础权限",
     "entries": [
-        {"effect": "allow", "object_type": "mcp_tool", "object_id": "*", "tool_owner": "searcher"},
-        # 公有工具只开放 file_read
-        {"effect": "allow", "object_type": "mcp_tool", "object_id": "file_read", "tool_owner": "public"},
-        # 注意：searcher 没有 calc 的权限 → 演示场景 3
-        # 注意：searcher 没有 call analyzer 的权限
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "web_search", "tool_owner": "searcher"},
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "page_fetch", "tool_owner": "searcher"},
+        {"effect": "allow", "object_type": "agent", "object_id": "orchestrator"},
+        {"effect": "allow", "object_type": "agent", "object_id": "analyzer"},
     ]
 }
 
@@ -118,12 +123,9 @@
     "agent_id": "analyzer",
     "label": "分析器基础权限",
     "entries": [
-        {"effect": "allow", "object_type": "mcp_tool", "object_id": "*", "tool_owner": "analyzer"},
-        {"effect": "allow", "object_type": "mcp_tool", "object_id": "file_read", "tool_owner": "public"},
-        {"effect": "allow", "object_type": "agent", "object_id": "searcher"},  # 允许调 searcher (场景6)
-        # 注意：deny calc 给 searcher，但 analyzer 自己有 calc → 演示不同属主隔离
-        # 注意：deny chart_gen 给所有人（包括 analyzer） → 演示场景 4
-        {"effect": "deny",  "object_type": "mcp_tool", "object_id": "chart_gen", "tool_owner": "analyzer"}
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "calc", "tool_owner": "analyzer"},
+        {"effect": "allow", "object_type": "mcp_tool", "object_id": "chart_gen", "tool_owner": "analyzer"},
+        {"effect": "allow", "object_type": "agent", "object_id": "orchestrator"},
     ]
 }
 ```

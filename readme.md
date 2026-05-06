@@ -55,7 +55,7 @@ cp .env.example .env
 
 ```bash
 cd docker
-docker compose --env-file ../.env up -d
+docker compose --env-file ../.env up -d --build
 ```
 ### 第3步：启动 Demo App：
 ```sh

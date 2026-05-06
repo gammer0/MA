@@ -1,8 +1,10 @@
 """审计模块 - FastAPI 入口"""
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import text
 
 from config import DATABASE_URL
 from handlers import router
@@ -31,5 +33,16 @@ app.include_router(router)
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "ok", "service": "audit-service"}
+async def health_check(request: Request):
+    """健康检查 — 包含数据库连接检测"""
+    checks = {"status": "ok", "service": "audit-service", "checks": {}}
+    try:
+        async with request.app.state.db_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["checks"]["database"] = "ok"
+    except Exception as e:
+        checks["status"] = "degraded"
+        checks["checks"]["database"] = f"error: {e}"
+
+    status_code = 200 if checks["status"] == "ok" else 503
+    return JSONResponse(content=checks, status_code=status_code)

@@ -94,8 +94,8 @@ async function batchRegister() {
   }
   document.getElementById('progress').style.width = '80%';
 
-  // 注入凭证到执行层
-  const execUrl = window.location.origin.replace(':8002', ':8004');
+  // 注入凭证到执行层（同源代理，走权限网关 POST /admin/keys）
+  const execUrl = '';
   const payload = {};
   for (const agent of manifestData.agents || []) {
     if (agent._registered_id && agent._private_key) {

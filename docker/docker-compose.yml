@@ -53,6 +53,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8002:8002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: postgresql+asyncpg://agent:dev_password_123@postgres:5432/agent_security
       REDIS_URL: redis://redis:6379/1                   # Redis DB 1: 令牌视图缓存
@@ -77,25 +79,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
-
-  feishu-demo-app:
-    build:
-      context: ../feishu-demo-app                       # 飞书演示项目
-      dockerfile: Dockerfile
-    ports:
-      - "8005:8005"
-    environment:
-      GATEWAY_URL: http://permission-gateway:8002
-      ADMIN_API_KEY: admin-secret-key-dev
-      LLM_API_KEY: ${LLM_API_KEY}
-      LLM_API_BASE: ${LLM_API_BASE:-https://api.openai.com/v1}
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
-      FEISHU_APP_ID: ${FEISHU_APP_ID}
-      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET}
-    command: python3 -m uvicorn main:app --host 0.0.0.0 --port 8005
-    depends_on:
-      - permission-gateway
     restart: unless-stopped
 
 volumes:

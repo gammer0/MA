@@ -1,5 +1,6 @@
 """权限网关 - API 路由处理"""
 import json
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -881,3 +882,30 @@ async def handle_admin_list_tools():
             return resp.json()
         except Exception:
             return []
+
+
+@router.post("/admin/keys")
+async def handle_admin_inject_keys(request: Request):
+    """POST /admin/keys — 代理到飞书执行层进行密钥热注入（避免浏览器跨域）"""
+    import httpx
+    exec_url = os.getenv("EXECUTION_LAYER_URL", "http://host.docker.internal:8005")
+
+    admin_key = request.headers.get("X-Admin-API-Key", "")
+    if admin_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid admin API key")
+
+    body = await request.json()
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.post(
+                f"{exec_url}/admin/keys",
+                json=body,
+                headers={"X-Admin-API-Key": admin_key},
+            )
+            return resp.json()
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to proxy to execution layer ({exec_url}): {exc}",
+            )

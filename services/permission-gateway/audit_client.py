@@ -1,7 +1,10 @@
 """权限网关 - 审计模块 HTTP 客户端（异步 fire-and-forget）"""
 import asyncio
+import logging
 import httpx
 from config import AUDIT_SERVICE_URL, SERVICE_API_KEY
+
+logger = logging.getLogger(__name__)
 
 
 async def _post_async(url: str, body: dict) -> None:
@@ -13,9 +16,8 @@ async def _post_async(url: str, body: dict) -> None:
                 json=body,
                 headers={"X-Service-API-Key": SERVICE_API_KEY},
             )
-    except Exception:
-        # fire-and-forget，静默失败
-        pass
+    except Exception as exc:
+        logger.warning("审计日志发送失败: url=%s, error=%s", url, exc)
 
 
 def send_signature_record(record: dict) -> None:

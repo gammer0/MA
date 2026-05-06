@@ -23,8 +23,9 @@ test_body.py
 test_gateway.py
 *.pyc
 
-# 私钥/凭证输出 (由 batch_register.py 生成)
+# 私钥/凭证输出 (由 batch_register.py / register_agent.py 生成)
 batch_register_output.json
+feishu_register_output.json
 
 # Docker volumes
 docker/pg_data/

@@ -1,11 +1,12 @@
 """权限网关 - FastAPI 入口"""
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import text
 from redis.asyncio import Redis
 from pathlib import Path
 
@@ -58,5 +59,23 @@ async def admin_page():
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "ok", "service": "permission-gateway"}
+async def health_check(request: Request):
+    """健康检查 — 包含数据库和 Redis 连接检测"""
+    checks = {"status": "ok", "service": "permission-gateway", "checks": {}}
+    try:
+        async with request.app.state.db_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["checks"]["database"] = "ok"
+    except Exception as e:
+        checks["status"] = "degraded"
+        checks["checks"]["database"] = f"error: {e}"
+
+    try:
+        await request.app.state.redis.ping()
+        checks["checks"]["redis"] = "ok"
+    except Exception as e:
+        checks["status"] = "degraded"
+        checks["checks"]["redis"] = f"error: {e}"
+
+    status_code = 200 if checks["status"] == "ok" else 503
+    return JSONResponse(content=checks, status_code=status_code)

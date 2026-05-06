@@ -16,13 +16,15 @@ from pathlib import Path
 _sdk_root = Path(__file__).parent.parent
 sys.path.insert(0, str(_sdk_root))
 
-from agent_sdk.agent_registry import AgentRegistry
+from agent_sdk import AgentRegistry
 from orchestrator import ReporterAgent
 from worker_agents.data_agent import DataAgent
 from worker_agents.search_agent import SearchAgent
 
-# Agent 注册中心（密钥热注入封装于此）
-registry = AgentRegistry(gateway_url=GATEWAY_URL)
+# Agent 注册中心（加密本地文件持久化 + 热注入）
+_KEY_FILE = str(Path.home() / ".agent-secrets" / "keys.enc")
+_SALT_FILE = str(Path.home() / ".agent-secrets" / ".salt")
+registry = AgentRegistry(gateway_url=GATEWAY_URL, key_file=_KEY_FILE, salt_file=_SALT_FILE)
 
 
 def _init_lark_cli():
@@ -46,29 +48,18 @@ def _init_lark_cli():
 async def lifespan(app: FastAPI):
     _init_lark_cli()
 
-    # 注册 Agent 类型（不创建实例，等密钥注入）
+    # 注册 Agent 类型（不创建实例，等密钥注入或本地文件恢复）
     registry.register("reporter", ReporterAgent, data_agent=None, search_agent=None)
     registry.register("data_agent", DataAgent)
     registry.register("search_agent", SearchAgent)
 
-    # 如果有环境变量密钥，立即注入
-    env_keys = {}
-    for name in ["reporter", "data_agent", "search_agent"]:
-        aid = os.getenv(f"AGENT_{name.upper()}_ID", "")
-        pk = os.getenv(f"AGENT_{name.upper()}_PRIVATE_KEY", "")
-        if aid and pk:
-            env_keys[name] = {"agent_id": aid, "private_key": pk.replace("\\n", "\n")}
-    if env_keys:
-        registry.inject_keys(env_keys)
-
     # 注入 reporter 的依赖
     data_agent = registry.get("data_agent")
     search_agent = registry.get("search_agent")
-    if data_agent and search_agent:
-        reporter = registry.get("reporter")
-        if reporter:
-            reporter._data_agent = data_agent
-            reporter._search_agent = search_agent
+    reporter = registry.get("reporter")
+    if reporter and data_agent and search_agent:
+        reporter._data_agent = data_agent
+        reporter._search_agent = search_agent
 
     app.state.registry = registry
     yield

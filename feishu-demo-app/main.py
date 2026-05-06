@@ -22,8 +22,9 @@ from agent_sdk.key_store import DEFAULT_KEY_FILE, DEFAULT_SALT_FILE
 from orchestrator import ReporterAgent
 from worker_agents.data_agent import DataAgent
 from worker_agents.search_agent import SearchAgent
+from worker_agents.analyzer_agent import AnalyzerAgent
 
-# Agent 注册中心 加密本地文件持久化 
+# Agent 注册中心 加密本地文件持久化
 registry = AgentRegistry(gateway_url=GATEWAY_URL, key_file=DEFAULT_KEY_FILE, salt_file=DEFAULT_SALT_FILE)
 
 
@@ -49,17 +50,23 @@ async def lifespan(app: FastAPI):
     _init_lark_cli()
 
     # 注册 Agent 类型（不创建实例，等密钥注入或本地文件恢复）
-    registry.register("reporter", ReporterAgent, data_agent=None, search_agent=None)
+    registry.register("reporter", ReporterAgent, data_agent=None, search_agent=None, analyzer_agent=None)
     registry.register("data_agent", DataAgent)
     registry.register("search_agent", SearchAgent)
+    registry.register("analyzer", AnalyzerAgent)
 
     # 注入 reporter 的依赖
     data_agent = registry.get("data_agent")
     search_agent = registry.get("search_agent")
+    analyzer_agent = registry.get("analyzer")
     reporter = registry.get("reporter")
-    if reporter and data_agent and search_agent:
-        reporter._data_agent = data_agent
-        reporter._search_agent = search_agent
+    if reporter:
+        if data_agent:
+            reporter._data_agent = data_agent
+        if search_agent:
+            reporter._search_agent = search_agent
+        if analyzer_agent:
+            reporter._analyzer_agent = analyzer_agent
 
     app.state.registry = registry
     yield
@@ -87,10 +94,15 @@ async def admin_inject_keys(request: Request):
     # 注入 reporter 的依赖关联
     data_agent = registry.get("data_agent")
     search_agent = registry.get("search_agent")
+    analyzer_agent = registry.get("analyzer")
     reporter = registry.get("reporter")
-    if reporter and data_agent and search_agent:
-        reporter._data_agent = data_agent
-        reporter._search_agent = search_agent
+    if reporter:
+        if data_agent:
+            reporter._data_agent = data_agent
+        if search_agent:
+            reporter._search_agent = search_agent
+        if analyzer_agent:
+            reporter._analyzer_agent = analyzer_agent
     return {"status": "ok"}
 
 

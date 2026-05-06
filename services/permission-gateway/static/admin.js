@@ -3,15 +3,7 @@ let agents = [], tools = [];
 let selectedAgent = null;
 let currentTokenId = null;
 let currentEntries = {};
-let adminApiKey = '';
 let manifestData = null;
-
-function getApiKey() {
-  if (!adminApiKey) {
-    adminApiKey = document.getElementById('api-key-input').value || '';
-  }
-  return adminApiKey;
-}
 
 // ============================================================
 // Tab 切换
@@ -55,9 +47,6 @@ async function batchRegister() {
   document.getElementById('progress').style.width = '20%';
   addRegLog('ok', '🚀 开始注册...');
 
-  const apiKey = getApiKey();
-  if (!apiKey) { addRegLog('err', '❌ 请先输入 Admin API Key'); return; }
-
   const baseUrl = window.location.origin.replace(':8002', ':8001');
   let okA = 0, okT = 0;
 
@@ -65,7 +54,7 @@ async function batchRegister() {
   for (const agent of manifestData.agents || []) {
     try {
       const r = await fetch(baseUrl + '/agents/register', {
-        method: 'POST', headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+        method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({agent_name:agent.agent_name,agent_type:agent.agent_type,owner:agent.owner||'default'})
       });
       if (r.ok) {
@@ -85,7 +74,7 @@ async function batchRegister() {
   for (const tool of manifestData.tools || []) {
     try {
       const r = await fetch(baseUrl + '/tools/register', {
-        method: 'POST', headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+        method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({tool_name:tool.tool_name,tool_owner:tool.tool_owner,description:tool.description||''})
       });
       if (r.ok || r.status === 409) { okT++; addRegLog('ok', `✅ Tool: ${tool.tool_name} (${tool.tool_owner})`); }
@@ -105,7 +94,7 @@ async function batchRegister() {
   if (Object.keys(payload).length > 0) {
     try {
       const r = await fetch(execUrl + '/admin/keys', {
-        method: 'POST', headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+        method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload)
       });
       if (r.ok) addRegLog('ok', '✅ 凭证已注入执行层 (demo-app)');
@@ -333,7 +322,7 @@ async function saveToken() {
       // 创建新令牌
       const res = await fetch('/tokens', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-Admin-API-Key': getApiKey()},
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ agent_id: a.agent_id, label: `${a.agent_name} 长期令牌`, entries })
       });
       if (!res.ok) throw new Error(await res.text());
@@ -349,15 +338,14 @@ async function saveToken() {
       // 删除全部
       for (const e of existingEntries) {
         await fetch(`/tokens/${tokenId}/entries/${e.entry_id}`, {
-          method: 'DELETE',
-          headers: {'X-Admin-API-Key': getApiKey()}
+          method: 'DELETE'
         });
       }
       // 添加新条目
       for (const e of entries) {
         await fetch(`/tokens/${tokenId}/entries`, {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-Admin-API-Key': getApiKey()},
+          headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(e)
         });
       }
@@ -372,8 +360,7 @@ async function revokeToken() {
   if (!currentTokenId || !confirm('确定吊销此令牌？吊销后该 Agent 将失去所有长期权限。')) return;
   try {
     await fetch(`/tokens/${currentTokenId}`, {
-      method: 'DELETE',
-      headers: {'X-Admin-API-Key': getApiKey()}
+      method: 'DELETE'
     });
     currentTokenId = null;
     // 保留 currentEntries，点击"保存"时将创建新令牌
@@ -490,12 +477,10 @@ async function refreshPendingRequests() {
 }
 
 async function autoApproveRequest(req) {
-  const apiKey = getApiKey();
-  if (!apiKey) return;
   try {
     const r = await fetch(`/tasks/${req.task_id}/permission-requests/${req.request_id}/approve`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+      headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         action: 'auto_approve',
         approved_entries: req.requested_entries || [],
@@ -511,15 +496,13 @@ async function autoApproveRequest(req) {
 }
 
 async function approveRequest(reqId, taskId) {
-  const apiKey = getApiKey();
-  if (!apiKey) return;
   const cached = pendingRequestsCache.find(r => r.request_id === reqId);
   if (!cached) return;
   const action = approvalMode === 'auto' ? 'auto_approve' : 'approve';
   try {
     const r = await fetch(`/tasks/${taskId}/permission-requests/${reqId}/approve`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+      headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         action: action,
         approved_entries: cached.requested_entries || [],
@@ -540,12 +523,10 @@ async function approveRequest(reqId, taskId) {
 }
 
 async function rejectRequest(reqId, taskId) {
-  const apiKey = getApiKey();
-  if (!apiKey) return;
   try {
     const r = await fetch(`/tasks/${taskId}/permission-requests/${reqId}/approve`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json','X-Admin-API-Key':apiKey},
+      headers: {'Content-Type':'application/json'},
       body: JSON.stringify({action:'reject', comment:'管理员拒绝'})
     });
     if (r.ok) {

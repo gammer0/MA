@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy import text
 from redis.asyncio import Redis
 
-from config import MAX_TEMP_PERMISSION_TTL, VIEW_CACHE_TTL, IDENTITY_SERVICE_URL, ADMIN_API_KEY
+from config import MAX_TEMP_PERMISSION_TTL, VIEW_CACHE_TTL, IDENTITY_SERVICE_URL
 from models import (
     StandardToken, TokenEntry, TokenEffect, ObjectType, TokenStatus,
     TaskPermissionEntry, PermissionSource, CallType, SessionStatus,
@@ -860,10 +860,7 @@ async def handle_admin_list_agents():
     import httpx
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            resp = await client.get(
-                f"{IDENTITY_SERVICE_URL}/agents",
-                headers={"X-Admin-API-Key": ADMIN_API_KEY},
-            )
+            resp = await client.get(f"{IDENTITY_SERVICE_URL}/agents")
             return resp.json()
         except Exception:
             return []
@@ -875,10 +872,7 @@ async def handle_admin_list_tools():
     import httpx
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            resp = await client.get(
-                f"{IDENTITY_SERVICE_URL}/tools",
-                headers={"X-Admin-API-Key": ADMIN_API_KEY},
-            )
+            resp = await client.get(f"{IDENTITY_SERVICE_URL}/tools")
             return resp.json()
         except Exception:
             return []
@@ -889,20 +883,10 @@ async def handle_admin_inject_keys(request: Request):
     """POST /admin/keys — 代理到飞书执行层进行密钥热注入（避免浏览器跨域）"""
     import httpx
     exec_url = os.getenv("EXECUTION_LAYER_URL", "http://host.docker.internal:8005")
-
-    admin_key = request.headers.get("X-Admin-API-Key", "")
-    if admin_key != ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid admin API key")
-
     body = await request.json()
-
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            resp = await client.post(
-                f"{exec_url}/admin/keys",
-                json=body,
-                headers={"X-Admin-API-Key": admin_key},
-            )
+            resp = await client.post(f"{exec_url}/admin/keys", json=body)
             return resp.json()
         except httpx.RequestError as exc:
             raise HTTPException(

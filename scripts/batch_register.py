@@ -1,7 +1,7 @@
 """批量注册 Agent 和 MCP Tool 脚本
 
 用法: 
-    python batch_register.py --manifest agent_tool_manifest.json --api-key "xxx" --url http://localhost:8001
+    python batch_register.py --manifest agent_tool_manifest.json --url http://localhost:8001
 
 读取开发者提供的 manifest JSON，自动完成所有 Agent 和 Tool 的注册。
 私钥由 identity-service 直接推送到 demoapp，不在脚本中落盘。
@@ -16,7 +16,6 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser(description="批量注册 Agent 和 MCP Tool")
     parser.add_argument("--manifest", required=True, help="agent_tool_manifest.json 路径")
-    parser.add_argument("--api-key", required=True, help="管理 API Key")
     parser.add_argument("--url", default="http://localhost:8001", help="身份注册服务地址")
     args = parser.parse_args()
 
@@ -50,7 +49,6 @@ def main():
                     "agent_type": agent["agent_type"],
                     "owner": agent.get("owner", "default"),
                 },
-                headers={"X-Admin-API-Key": args.api_key},
                 timeout=30,
             )
             if resp.status_code == 200:
@@ -86,7 +84,6 @@ def main():
                     "description": tool.get("description", ""),
                     "tool_schema": tool.get("tool_schema", {}),
                 },
-                headers={"X-Admin-API-Key": args.api_key},
                 timeout=30,
             )
             if resp.status_code == 200:

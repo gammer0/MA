@@ -17,14 +17,13 @@ _sdk_root = Path(__file__).parent.parent
 sys.path.insert(0, str(_sdk_root))
 
 from agent_sdk import AgentRegistry
+from agent_sdk.key_store import DEFAULT_KEY_FILE, DEFAULT_SALT_FILE
 from orchestrator import ReporterAgent
 from worker_agents.data_agent import DataAgent
 from worker_agents.search_agent import SearchAgent
 
 # Agent 注册中心（加密本地文件持久化 + 热注入）
-_KEY_FILE = str(Path.home() / ".agent-secrets" / "keys.enc")
-_SALT_FILE = str(Path.home() / ".agent-secrets" / ".salt")
-registry = AgentRegistry(gateway_url=GATEWAY_URL, key_file=_KEY_FILE, salt_file=_SALT_FILE)
+registry = AgentRegistry(gateway_url=GATEWAY_URL, key_file=DEFAULT_KEY_FILE, salt_file=DEFAULT_SALT_FILE)
 
 
 def _init_lark_cli():
@@ -80,9 +79,6 @@ async def health():
 async def admin_inject_keys(request: Request):
     """POST /admin/keys — 运行时注入 Agent 凭证（热注入）。"""
     body = await request.json()
-    admin_key = request.headers.get("X-Admin-API-Key", "")
-    if admin_key != os.getenv("ADMIN_API_KEY", "admin-secret-key-dev"):
-        raise HTTPException(status_code=401)
     for name in body:
         if "private_key" in body[name]:
             body[name]["private_key"] = body[name]["private_key"].replace("\\n", "\n")

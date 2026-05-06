@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 from redis.asyncio import Redis
 
-from config import DEFAULT_CERT_TTL_DAYS, ADMIN_API_KEY, EXECUTION_LAYER_URL
+from config import DEFAULT_CERT_TTL_DAYS, EXECUTION_LAYER_URL
 from crypto import (
     generate_ed25519_keypair,
     build_session_signature_payload,
@@ -137,7 +137,6 @@ async def handle_register(
             resp = await client.post(
                 f"{EXECUTION_LAYER_URL}/admin/keys",
                 json=payload,
-                headers={"X-Admin-API-Key": ADMIN_API_KEY},
             )
             if resp.status_code != 200:
                 raise httpx.HTTPStatusError(

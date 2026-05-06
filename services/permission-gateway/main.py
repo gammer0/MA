@@ -12,7 +12,7 @@ from pathlib import Path
 
 from config import DATABASE_URL, REDIS_URL
 from handlers import router
-from middleware import AdminAPIKeyMiddleware, ServiceAPIKeyMiddleware
+from middleware import ServiceAPIKeyMiddleware
 
 
 @asynccontextmanager
@@ -39,7 +39,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(ServiceAPIKeyMiddleware)
-app.add_middleware(AdminAPIKeyMiddleware)
 
 app.include_router(router)
 

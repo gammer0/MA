@@ -10,10 +10,11 @@ from nacl.secret import SecretBox
 from nacl.utils import random as nacl_random
 
 
-# 默认密钥文件路径
-DEFAULT_KEY_FILE = str(Path.home() / ".agent-secrets" / "keys.enc")
+# 默认密钥文件路径（存储在 agent_sdk 目录下，便于查看和管理）
+_sdk_dir = Path(__file__).parent.resolve()
+DEFAULT_KEY_FILE = str(_sdk_dir / "keys.enc")
 # 派生密钥的盐文件
-DEFAULT_SALT_FILE = str(Path.home() / ".agent-secrets" / ".salt")
+DEFAULT_SALT_FILE = str(_sdk_dir / ".salt")
 
 
 def _derive_key(machine_key: bytes, salt: bytes) -> bytes:

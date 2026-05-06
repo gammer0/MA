@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from config import DATABASE_URL
 from handlers import router
-from middleware import AdminAPIKeyMiddleware, ServiceAPIKeyMiddleware
+from middleware import ServiceAPIKeyMiddleware
 
 
 @asynccontextmanager
@@ -26,7 +26,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(AdminAPIKeyMiddleware)
 app.add_middleware(ServiceAPIKeyMiddleware)
 
 app.include_router(router)

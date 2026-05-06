@@ -57,7 +57,11 @@ cp .env.example .env
 cd docker
 docker compose --env-file ../.env up -d
 ```
-
+### 第3步：启动 Demo App：
+   ``sh
+   cd feishu-demo-app && pip install -r requirements.txt && python main.py
+   ```
+   
 等待所有服务 healthy（约 15 秒）：
 
 ```bash
@@ -75,18 +79,14 @@ docker compose ps
    - 自动注册 4 个 Agent + 8 个 Tool
    - 私钥自动推送至 demoapp 并加密持久化
 
-3. **启动 Demo App**：
-   ```bash
-   cd feishu-demo-app && python main.py
-   ```
 
-4. **创建令牌**：切换到「🔑 令牌订阅」标签，为每个 Agent 创建令牌：
+3. **创建令牌**：切换到「🔑 令牌订阅」标签，为每个 Agent 创建令牌：
    - **reporter**：`allow agent:data_agent` / `allow agent:search_agent` / `allow agent:analyzer` / `allow mcp_tool:lark_doc`
    - **data_agent**：`allow mcp_tool:lark_calendar` / `allow mcp_tool:lark_base` / `allow mcp_tool:lark_contact`
    - **search_agent**：`allow mcp_tool:web_search` / `allow mcp_tool:page_fetch` / **`deny mcp_tool:lark_base`**
    - **analyzer**：`allow mcp_tool:data_summarize` / `allow mcp_tool:chart_gen`
 
-5. 在「⏳ 权限申请审批」面板点击「自动降级」
+4. 在「⏳ 权限申请审批」面板点击「自动降级」
 
 ### 第 4 步：执行三种安全场景
 

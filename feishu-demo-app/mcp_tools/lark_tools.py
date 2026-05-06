@@ -10,7 +10,8 @@ class LarkToolBase:
 
     def _run(self, *args) -> dict:
         """执行 lark-cli 命令并返回 JSON 结果。"""
-        cmd = ["lark-cli"] + list(args) + ["--json"]
+        cmd = ["lark-cli"] + list(args)
+        # 默认输出格式为 json（lark-cli 默认已经是 json）
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode == 0 and result.stdout.strip():
@@ -31,9 +32,9 @@ class LarkDocTool(LarkToolBase):
 
     async def execute(self, action: str, title: str = "", content: str = "", doc_id: str = "") -> dict:
         if action == "create":
-            return self._run("doc", "create", "--title", title, "--content", content)
+            return self._run("docs", "+create", "--title", title, "--content", content)
         elif action == "read":
-            return self._run("doc", "get", "--doc-id", doc_id)
+            return self._run("docs", "+fetch", "--doc-id", doc_id)
         return {"status": "error", "message": f"未知操作: {action}"}
 
 
@@ -44,9 +45,9 @@ class LarkBaseTool(LarkToolBase):
 
     async def execute(self, action: str, table_id: str = "", view_id: str = "") -> dict:
         if action == "records":
-            return self._run("base", "records", "--table-id", table_id)
+            return self._run("base", "+record-list", "--table-id", table_id)
         elif action == "fields":
-            return self._run("base", "fields", "--table-id", table_id)
+            return self._run("base", "+field-list", "--table-id", table_id)
         return {"status": "error", "message": f"未知操作: {action}"}
 
 
@@ -57,7 +58,7 @@ class LarkContactTool(LarkToolBase):
 
     async def execute(self, action: str, keyword: str = "") -> dict:
         if action == "search":
-            return self._run("contact", "search", "--keyword", keyword)
+            return self._run("contact", "+search-user", "--query", keyword)
         return {"status": "error", "message": f"未知操作: {action}"}
 
 
@@ -68,5 +69,5 @@ class LarkCalendarTool(LarkToolBase):
 
     async def execute(self, action: str, days: int = 7) -> dict:
         if action == "agenda":
-            return self._run("calendar", "agenda", "--days", str(days))
+            return self._run("calendar", "+agenda")
         return {"status": "error", "message": f"未知操作: {action}"}

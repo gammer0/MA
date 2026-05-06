@@ -25,7 +25,10 @@
 
 ## 快速演示（10 分钟）
 
-演示场景：飞书中有三个 AI Agent —— 文档助手（reporter）、企业数据 Agent（data_agent）、外部检索 Agent（search_agent）。文档助手生成周报时委托另两个 Agent 查数据，但 search_agent 无权访问飞书企业数据（会被拦截）。
+演示场景：飞书中有四个 AI Agent —— 文档助手（reporter）、企业数据 Agent（data_agent）、外部检索 Agent（search_agent）、数据分析 Agent（analyzer）。系统提供三个硬编码安全场景：
+- **场景A**：三Agent正常委托（查询数据 → 写报告）
+- **场景B**：三Agent越权拦截（search_agent 越权调飞书数据被 deny 阻止）
+- **场景C**：四Agent单链调用（reporter → data → search → analyzer → 文档）
 
 ### 前置准备
 
@@ -68,14 +71,13 @@ docker compose ps
 cd ..
 python scripts/batch_register.py \
   --manifest scripts/agent_tool_manifest_feishu.json \
-  --api-key admin-secret-key-dev \
   --url http://localhost:8001
 ```
 
 此命令完成：
-- 向身份注册服务注册 3 个 Agent（reporter、data_agent、search_agent）
-- 注册 6 个 MCP 工具（lark_doc、lark_base、lark_contact、lark_calendar、web_search、page_fetch）
-- 自动将 Agent 私钥热注入到执行层（:8005）
+- 注册 4 个 Agent（reporter、data_agent、search_agent、analyzer）
+- 注册 8 个 MCP 工具
+- 私钥由 identity-service 自动推送到 demoapp 并加密持久化（管理员不接触私钥）
 
 ### 第 4 步：启动飞书演示应用
 
@@ -85,56 +87,66 @@ python main.py
 # 输出: Uvicorn running on http://0.0.0.0:8005
 ```
 
-### 第 5 步：配置令牌（权限规则）
+### 第 5 步：创建令牌
 
-打开 **权限网关管理 UI**：`http://localhost:8002/admin`
+通过 API 一键创建所有令牌（含 search_agent 的 deny 规则）：
 
-#### 5a. 为 data_agent 创建长期令牌（允许被调用 + 使用飞书工具）
+```bash
+python -c "
+import httpx
+gw='http://localhost:8002'
+r=httpx.get('http://localhost:8001/agents?status=active',timeout=10)
+agents={a['agent_name']:a['agent_id'] for a in r.json()}
 
-在「🔑 令牌订阅」面板：
-- Agent：选择 `data_agent`
-- 标签：`企业数据 Agent 标准权限`
-- 添加条目：
-  - `allow agent data_agent` （允许自己被调用）
-  - `allow mcp_tool lark_base data_agent` （允许多维表格）
-  - `allow mcp_tool lark_contact data_agent` （允许通讯录）
-  - `allow mcp_tool lark_calendar data_agent` （允许日历）
-- 点击「创建令牌」
+# reporter: 允许调用所有 Agent + 创建文档
+httpx.post(f'{gw}/tokens',json={'agent_id':agents['reporter'],'label':'reporter','entries':[
+  {'effect':'allow','object_type':'agent','object_id':agents['data_agent']},
+  {'effect':'allow','object_type':'agent','object_id':agents['search_agent']},
+  {'effect':'allow','object_type':'agent','object_id':agents['analyzer']},
+  {'effect':'allow','object_type':'mcp_tool','object_id':'lark_doc','tool_owner':'reporter'}]})
 
-#### 5b. 为 search_agent 创建长期令牌（仅公开搜索 + 明确拒绝飞书）
+# data_agent: 飞书工具
+httpx.post(f'{gw}/tokens',json={'agent_id':agents['data_agent'],'label':'data_agent','entries':[
+  {'effect':'allow','object_type':'mcp_tool','object_id':'lark_calendar','tool_owner':'data_agent'},
+  {'effect':'allow','object_type':'mcp_tool','object_id':'lark_contact','tool_owner':'data_agent'},
+  {'effect':'allow','object_type':'mcp_tool','object_id':'lark_base','tool_owner':'data_agent'}]})
 
-- Agent：选择 `search_agent`
-- 标签：`外部检索 Agent 标准权限`
-- 添加条目：
-  - `allow agent search_agent` （允许自己被调用）
-  - `allow mcp_tool web_search search_agent` （允许网页搜索）
-  - `allow mcp_tool page_fetch search_agent` （允许页面抓取）
-  - **`deny mcp_tool lark_base data_agent`** （拒绝访问飞书多维表格）
-- 点击「创建令牌」
+# search_agent: 公开搜索 + deny lark_base（越权拦截）
+httpx.post(f'{gw}/tokens',json={'agent_id':agents['search_agent'],'label':'search_agent','entries':[
+  {'effect':'allow','object_type':'mcp_tool','object_id':'web_search','tool_owner':'search_agent'},
+  {'effect':'allow','object_type':'mcp_tool','object_id':'page_fetch','tool_owner':'search_agent'},
+  {'effect':'deny','object_type':'mcp_tool','object_id':'lark_base','tool_owner':'data_agent'}]})
 
-#### 5c. 为 reporter 创建长期令牌
-
-- Agent：选择 `reporter`
-- 标签：`文档助手标准权限`
-- 添加条目：
-  - `allow agent data_agent` （允许调用 data_agent）
-  - `allow agent search_agent` （允许调用 search_agent）
-  - `allow mcp_tool lark_doc reporter` （允许创建飞书文档）
-- 点击「创建令牌」
-
-### 第 6 步：执行任务验证
-
-打开 `http://localhost:8005`，在输入框中输入：
-
-```
-帮我生成本周项目进度周报
+# analyzer: 分析工具
+httpx.post(f'{gw}/tokens',json={'agent_id':agents['analyzer'],'label':'analyzer','entries':[
+  {'effect':'allow','object_type':'mcp_tool','object_id':'data_summarize','tool_owner':'analyzer'},
+  {'effect':'allow','object_type':'mcp_tool','object_id':'chart_gen','tool_owner':'analyzer'}]})
+print('DONE')
+"
 ```
 
-点击「执行」。观察：
-- ✅ **正常委托**：reporter → data_agent（查询企业数据）— 允许
-- ✅ **正常委托**：reporter → search_agent（搜索公开信息）— 允许
-- 🔴 **越权拦截**：search_agent → lark_base（飞书多维表格）— **拒绝！**
-- 📄 LLM 生成的自然语言任务总结
+在管理 UI (`http://localhost:8002/admin`) 中切换到「自动降级」模式。
+
+### 第 6 步：执行三种安全场景
+
+```bash
+# 场景A：三Agent正常委托（默认）
+curl -X POST http://localhost:8005/tasks/execute \
+  -H "Content-Type: application/json" \
+  -d '{"instruction":"查询团队日历和多维表格项目进度，结合外部行业动态，生成周报写入飞书文档"}'
+
+# 场景B：越权拦截（指令含"越权"）
+curl -X POST http://localhost:8005/tasks/execute \
+  -H "Content-Type: application/json" \
+  -d '{"instruction":"越权拦截演示：查询企业数据，测试search_agent越权访问飞书多维表格"}'
+
+# 场景C：四Agent单链（指令含"四Agent"或"分析"）
+curl -X POST http://localhost:8005/tasks/execute \
+  -H "Content-Type: application/json" \
+  -d '{"instruction":"四Agent综合分析：查询数据，搜索公开信息，数据分析，生成报告"}'
+```
+
+查看结果：`http://localhost:8002/admin`（任务审计列表）
 
 ### 停止服务
 
@@ -152,18 +164,15 @@ docker compose -f docker/docker-compose.yml --env-file .env down -v
 
 | 功能 | 说明 |
 |------|------|
-| Agent 身份注册 | Ed25519 密钥对生成、证书颁发、公钥存储与验签 |
-| 长期令牌 (StandardToken) | Agent 注册时由管理员预定义的权限集合，运行期间不变 |
-| 临时权限 (TaskPermission) | 与任务绑定的动态权限，任务结束后自动失效 |
-| A2A 权限控制 | Agent 调用 Agent 时的交集权限模型（caller ∩ callee） |
+| Agent 身份注册 | Ed25519 密钥对生成、私钥自动推送到执行层 |
+| 加密密钥持久化 | 私钥加密存储于本地文件，重启自动恢复 |
+| 长期令牌 (StandardToken) | Agent 注册时由管理员预定义的权限集合 |
+| 临时权限 (TaskPermission) | 与任务绑定的动态权限，自动审批降级 |
+| A2A 权限控制 | Agent 调用 Agent 时的交集权限模型 |
 | MCP 权限控制 | Agent 调用 MCP 工具时的自主权限检查 |
 | deny 优先 | 任一方 deny 即拒绝，精确匹配 |
-| 审批机制 | 缺失权限时可申请临时权限，支持自动/人工审批 |
-| 调用链追溯 | 同一任务下所有 A2A/MCP 调用的会话日志 |
 | 审计日志 | 签名记录、权限决策、安全事件全量记录 |
-| Agent SDK | Python SDK：`SecureAgentClient` + `AgentRegistry` + Ed25519 签名 |
-| 管理 UI | 令牌管理、审批面板、审计列表（Web 界面） |
-| 演示应用 | 飞书三 Agent 协作 Demo（reporter/data_agent/search_agent） |
+| 多场景演示 | 正常委托 / 越权拦截 / 四Agent单链 |
 
 ### ❌ 本系统不覆盖（留给外围安全系统）
 
@@ -475,10 +484,12 @@ python scripts/batch_register.py \
                 → lark_doc (写入飞书)        ✅
 ```
 
-**场景 2 — 越权拦截**：
+**场景 3 — 四Agent单链**：
 ```
-search_agent → lark_base (飞书多维表格) 🔴 explicitly_denied
-                                  └─ search_agent 的 deny 令牌阻止
+用户 → reporter → data_agent (3工具)
+                → search_agent (2工具)
+                → analyzer (data_summarize + chart_gen)
+                → lark_doc (综合分析报告) ✅
 ```
 
 ---
@@ -585,16 +596,15 @@ MA/
 | 身份注册服务 (Identity) | `:8001` | Agent 证书生成/颁发/验签 |
 | 权限网关 (Gateway) | `:8002` | 令牌管理 + 调用拦截 + 管理 UI |
 | 审计模块 (Audit) | `:8003` | 签名记录 + 会话日志 + 调用链 |
-| 飞书 Demo App | `:8005` | 飞书三 Agent 演示 (Reporter/Data/Search) |
-| PostgreSQL | `:5432` | 共享数据库 (agent / dev_password_123) |
+| 飞书 Demo App | `:8005` | 飞书四 Agent 演示 (宿主机部署) |
+| PostgreSQL | `:5432` | 共享数据库 |
 | Redis | `:6379` | 视图缓存 + 指令映射 |
 
-### 管理密钥
+### 安全密钥存储
 
-| 用途 | Key |
-|------|-----|
-| Admin API | `admin-secret-key-dev` |
-| Service API | `service-secret-key-dev` |
+Agent 私钥由 identity-service 注册时自动推送至 demoapp，
+加密持久化到 `agent_sdk/keys.enc`。
+管理员全程不接触私钥，进程重启后自动从加密文件恢复。
 
 ---
 
@@ -604,7 +614,7 @@ MA/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/agents/register` | 注册 Agent，返回 agent_id + private_key |
+| POST | `/agents/register` | 注册 Agent，返回 agent_id（私钥自动推送 demoapp） |
 | POST | `/tools/register` | 注册 MCP Tool |
 | GET | `/agents/{agent_id}` | 查询 Agent 信息 |
 | GET | `/agents/{agent_id}/public-key` | 获取 Agent 公钥 |

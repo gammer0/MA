@@ -65,88 +65,40 @@ docker compose ps
 # 应看到 postgres、redis、identity-service、permission-gateway、audit-service 均为 healthy/running
 ```
 
-### 第 3 步：注册 Agent 身份
+### 第 3 步：注册 Agent + 启动 Demo App + 创建令牌
 
-```bash
-cd ..
-python scripts/batch_register.py \
-  --manifest scripts/agent_tool_manifest_feishu.json \
-  --url http://localhost:8001
-```
+在管理 UI 中完成全部操作，无需命令行：
 
-此命令完成：
-- 注册 4 个 Agent（reporter、data_agent、search_agent、analyzer）
-- 注册 8 个 MCP 工具
-- 私钥由 identity-service 自动推送到 demoapp 并加密持久化（管理员不接触私钥）
+1. 打开 **权限管理 UI**：`http://localhost:8002/admin`
 
-### 第 4 步：启动飞书演示应用
+2. **批量注册**：点击「📁 上传」选择 `scripts/agent_tool_manifest_feishu.json`，再点击「🚀 开始注册」
+   - 自动注册 4 个 Agent + 8 个 Tool
+   - 私钥自动推送至 demoapp 并加密持久化
 
-```bash
-cd feishu-demo-app
-python main.py
-# 输出: Uvicorn running on http://0.0.0.0:8005
-```
+3. **启动 Demo App**：
+   ```bash
+   cd feishu-demo-app && python main.py
+   ```
 
-### 第 5 步：创建令牌
+4. **创建令牌**：切换到「🔑 令牌订阅」标签，为每个 Agent 创建令牌：
+   - **reporter**：`allow agent:data_agent` / `allow agent:search_agent` / `allow agent:analyzer` / `allow mcp_tool:lark_doc`
+   - **data_agent**：`allow mcp_tool:lark_calendar` / `allow mcp_tool:lark_base` / `allow mcp_tool:lark_contact`
+   - **search_agent**：`allow mcp_tool:web_search` / `allow mcp_tool:page_fetch` / **`deny mcp_tool:lark_base`**
+   - **analyzer**：`allow mcp_tool:data_summarize` / `allow mcp_tool:chart_gen`
 
-通过 API 一键创建所有令牌（含 search_agent 的 deny 规则）：
+5. 在「⏳ 权限申请审批」面板点击「自动降级」
 
-```bash
-python -c "
-import httpx
-gw='http://localhost:8002'
-r=httpx.get('http://localhost:8001/agents?status=active',timeout=10)
-agents={a['agent_name']:a['agent_id'] for a in r.json()}
+### 第 4 步：执行三种安全场景
 
-# reporter: 允许调用所有 Agent + 创建文档
-httpx.post(f'{gw}/tokens',json={'agent_id':agents['reporter'],'label':'reporter','entries':[
-  {'effect':'allow','object_type':'agent','object_id':agents['data_agent']},
-  {'effect':'allow','object_type':'agent','object_id':agents['search_agent']},
-  {'effect':'allow','object_type':'agent','object_id':agents['analyzer']},
-  {'effect':'allow','object_type':'mcp_tool','object_id':'lark_doc','tool_owner':'reporter'}]})
+打开 **演示控制台**：`http://localhost:8005`，在文本框中依次输入以下指令并点击「执行任务」：
 
-# data_agent: 飞书工具
-httpx.post(f'{gw}/tokens',json={'agent_id':agents['data_agent'],'label':'data_agent','entries':[
-  {'effect':'allow','object_type':'mcp_tool','object_id':'lark_calendar','tool_owner':'data_agent'},
-  {'effect':'allow','object_type':'mcp_tool','object_id':'lark_contact','tool_owner':'data_agent'},
-  {'effect':'allow','object_type':'mcp_tool','object_id':'lark_base','tool_owner':'data_agent'}]})
+| 场景 | 输入指令 | 预期调用 |
+|------|---------|---------|
+| **A. 正常委托** | `查询团队日历和多维表格项目进度，结合外部行业动态，生成周报写入飞书文档` | reporter → data(3工具) + search(2工具) → lark_doc |
+| **B. 越权拦截** | `越权拦截演示：查询企业数据，测试search_agent越权访问飞书多维表格` | 同上 + search→lark_base 🔴 被 deny 阻止 |
+| **C. 四Agent单链** | `四Agent综合分析：查询数据，搜索公开信息，数据分析，生成报告` | 同上 + analyzer(2工具) 共 4 Agent |
 
-# search_agent: 公开搜索 + deny lark_base（越权拦截）
-httpx.post(f'{gw}/tokens',json={'agent_id':agents['search_agent'],'label':'search_agent','entries':[
-  {'effect':'allow','object_type':'mcp_tool','object_id':'web_search','tool_owner':'search_agent'},
-  {'effect':'allow','object_type':'mcp_tool','object_id':'page_fetch','tool_owner':'search_agent'},
-  {'effect':'deny','object_type':'mcp_tool','object_id':'lark_base','tool_owner':'data_agent'}]})
-
-# analyzer: 分析工具
-httpx.post(f'{gw}/tokens',json={'agent_id':agents['analyzer'],'label':'analyzer','entries':[
-  {'effect':'allow','object_type':'mcp_tool','object_id':'data_summarize','tool_owner':'analyzer'},
-  {'effect':'allow','object_type':'mcp_tool','object_id':'chart_gen','tool_owner':'analyzer'}]})
-print('DONE')
-"
-```
-
-在管理 UI (`http://localhost:8002/admin`) 中切换到「自动降级」模式。
-
-### 第 6 步：执行三种安全场景
-
-```bash
-# 场景A：三Agent正常委托（默认）
-curl -X POST http://localhost:8005/tasks/execute \
-  -H "Content-Type: application/json" \
-  -d '{"instruction":"查询团队日历和多维表格项目进度，结合外部行业动态，生成周报写入飞书文档"}'
-
-# 场景B：越权拦截（指令含"越权"）
-curl -X POST http://localhost:8005/tasks/execute \
-  -H "Content-Type: application/json" \
-  -d '{"instruction":"越权拦截演示：查询企业数据，测试search_agent越权访问飞书多维表格"}'
-
-# 场景C：四Agent单链（指令含"四Agent"或"分析"）
-curl -X POST http://localhost:8005/tasks/execute \
-  -H "Content-Type: application/json" \
-  -d '{"instruction":"四Agent综合分析：查询数据，搜索公开信息，数据分析，生成报告"}'
-```
-
-查看结果：`http://localhost:8002/admin`（任务审计列表）
+6. 在管理 UI（`:8002/admin`）查看「📋 任务审计列表」验证调用链
 
 ### 停止服务
 

@@ -12,7 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agent_sdk import SecureAgentClient, PermissionDeniedError
-from mcp_tools.lark_tools import LarkDocTool
+from mcp_tools.lark_tools import LarkDocTool, LarkBaseTool, LarkContactTool, LarkCalendarTool
+from mcp_tools.search_tools import WebSearchTool, PageFetchTool
 from llm_client import chat
 
 
@@ -42,11 +43,14 @@ class ReporterAgent(SecureAgentClient):
                 "agent_id": self._search_agent.agent_id,
                 "desc": "外部检索 Agent，仅可访问公开网页，无权访问飞书企业数据",
             }
+        # 所有工具的实例清单（编排器直接执行 MCP）
         self._tools = {
-            "lark_doc": {
-                "instance": self._doc,
-                "desc": "创建飞书云文档，参数: title(标题), content(Markdown内容)",
-            },
+            "lark_calendar": {"instance": LarkCalendarTool(), "desc": "查询飞书日历日程"},
+            "lark_base": {"instance": LarkBaseTool(), "desc": "查询飞书多维表格"},
+            "lark_contact": {"instance": LarkContactTool(), "desc": "搜索飞书通讯录"},
+            "web_search": {"instance": WebSearchTool(), "desc": "公开网页搜索"},
+            "page_fetch": {"instance": PageFetchTool(), "desc": "网页内容抓取"},
+            "lark_doc": {"instance": self._doc, "desc": "创建飞书云文档"},
         }
 
     async def execute_task(self, task_id: str, instruction: str) -> dict:
@@ -59,21 +63,6 @@ class ReporterAgent(SecureAgentClient):
 
         # 阶段 1: LLM 规划执行计划
         plan = await self._plan(instruction)
-        result["plan"] = plan
-
-        # 补齐：如果计划中只有写文档而没有查询数据步骤，自动补充
-        has_data_query = any(
-            s.get("type") == "a2a" and s.get("target") in self._agents
-            for s in plan
-        )
-        if not has_data_query and any(s.get("target") == "lark_doc" for s in plan):
-            # 在前面插入 data_agent 和 search_agent 查询
-            auto_steps = [
-                {"type": "a2a", "target": "data_agent", "reason": "查询飞书企业数据（日历/通讯录/多维表格）", "params": {"query": instruction}},
-                {"type": "a2a", "target": "search_agent", "reason": "搜索外部公开信息", "params": {"query": instruction}},
-            ]
-            plan = auto_steps + plan
-            result["plan"] = plan
 
         # 阶段 2: 逐行执行
         for step in plan:
@@ -101,19 +90,28 @@ class ReporterAgent(SecureAgentClient):
         return "\n".join(lines)
 
     async def _plan(self, instruction: str) -> list:
-        """LLM 规划执行步骤"""
+        """LLM 规划执行步骤（软编码：在 prompt 中定义工具链规则）"""
         prompt = (
             f"根据用户指令，从以下资源规划执行步骤。\n\n"
-            f"可用 Agent:\n{self._agent_descriptions()}\n\n"
-            f"可用工具:\n{self._tool_descriptions()}\n\n"
+            f"可用 MCP 工具（编排器可直接调用）：\n"
+            f"- lark_calendar (Owner: data_agent) — 查询飞书日历日程\n"
+            f"- lark_base (Owner: data_agent) — 查询飞书多维表格数据\n"
+            f"- lark_contact (Owner: data_agent) — 搜索飞书通讯录\n"
+            f"- web_search (Owner: search_agent) — 公开网页搜索\n"
+            f"- page_fetch (Owner: search_agent) — 网页内容抓取\n"
+            f"- lark_doc (Owner: reporter) — 创建飞书云文档\n\n"
             f"规则：\n"
-            f"1. 必须先通过 a2a 调 Agent 获取数据，最后用 mcp/lark_doc 写文档\n"
-            f"2. data_agent 查飞书企业数据（日历/通讯录/多维表格）\n"
-            f"3. search_agent 查外部公开数据（网页搜索/抓取）\n"
-            f"4. 同时需要企业数据和外部数据时，两个 Agent 都要调用\n\n"
-            f"每步格式：{{'type':'a2a'|'mcp','target':'Agent名'|'工具名','reason':'用一句话说明为什么要做这步','params':{{}}}}\n"
-            f"a2a 时 params 传给 Agent 的 message；mcp 时 params 传工具参数。\n"
-            f"reason 要具体描述目的。\n"
+            f"1. 涉及飞书企业数据（日历/通讯录/多维表格）的查询，必须用 lark_calendar/lark_base/lark_contact\n"
+            f"2. 涉及外部公开信息或网络数据的搜索，必须用 web_search/page_fetch\n"
+            f"3. 需要写入文档时最后一步用 lark_doc\n"
+            f"4. 尽量使用最少的步骤完成用户指令\n\n"
+            f"每步格式：{{'type':'mcp','target':'工具名','reason':'为什么','params':{{工具参数}}}}\n"
+            f"lark_calendar 参数: {{\"action\":\"agenda\"}}\n"
+            f"lark_base 参数: {{\"action\":\"records\",\"table_id\":\"要查询的表ID\"}}\n"
+            f"lark_contact 参数: {{\"action\":\"search\",\"keyword\":\"关键词\"}}\n"
+            f"web_search 参数: {{\"query\":\"搜索词\"}}\n"
+            f"page_fetch 参数: {{\"url\":\"要抓取的URL\"}}\n"
+            f"lark_doc 参数: {{\"action\":\"create\",\"title\":\"文档标题\",\"content\":\"Markdown内容\"}}\n\n"
             f"只输出 JSON 数组，不要额外文字。\n\n"
             f"用户指令: {instruction}"
         )
@@ -123,9 +121,9 @@ class ReporterAgent(SecureAgentClient):
             return json.loads(text.strip())
         except Exception:
             return [
-                {"type": "a2a", "target": "data_agent", "reason": "查询企业数据", "params": {"query": instruction}},
-                {"type": "a2a", "target": "search_agent", "reason": "搜索外部信息", "params": {"query": instruction}},
-                {"type": "mcp", "target": "lark_doc", "reason": "写入飞书文档", "params": {"action": "create", "title": f"报告: {instruction[:20]}"}},
+                {"type": "mcp", "target": "lark_calendar", "reason": "查询团队日历", "params": {"action": "agenda"}},
+                {"type": "mcp", "target": "web_search", "reason": "搜索网络数据", "params": {"query": instruction}},
+                {"type": "mcp", "target": "lark_doc", "reason": "创建飞书云文档", "params": {"action": "create", "title": "报告", "content": "待补充"}},
             ]
 
     async def _execute_step(self, step: dict, task_id: str) -> dict:
@@ -140,34 +138,74 @@ class ReporterAgent(SecureAgentClient):
                 await self.call_agent(callee_agent_id=info["agent_id"],
                                       message=step.get("params", {}), task_id=task_id,
                                       reason=step.get("reason", ""))
-                output = await info["instance"].query_enterprise_data(
-                    step["params"].get("query", ""), task_id
-                ) if target == "data_agent" else await info["instance"].search(
-                    step["params"].get("query", ""), task_id)
                 entry["status"] = "allowed"
-                if isinstance(output, dict) and output.get("lark_base_hijack"):
-                    entry["security_event"] = {"event": "越权拦截",
-                        "detail": f"{target} 调用 lark_base 被 deny 阻止", "result": output["lark_base_hijack"]}
             except PermissionDeniedError as e:
                 entry["status"] = "denied"
                 entry["error"] = str(e)
 
         elif t == "mcp":
-            if target == "lark_doc":
-                try:
-                    await self.call_mcp_tool(tool_name="lark_doc", tool_owner="reporter",
-                                             tool_args=step.get("params", {}), task_id=task_id,
-                                             reason=step.get("reason", ""))
-                    p = step.get("params", {})
-                    entry["output"] = await self._doc.execute(
-                        p.get("action", "create"), title=p.get("title", ""), content=p.get("content", ""))
-                    entry["status"] = "allowed"
-                except PermissionDeniedError as e:
-                    entry["status"] = "denied"
-                    entry["error"] = str(e)
-            else:
+            # 工具 → Owner 映射表
+            tool_owner_map = {
+                "lark_calendar": "data_agent",
+                "lark_base": "data_agent",
+                "lark_contact": "data_agent",
+                "web_search": "search_agent",
+                "page_fetch": "search_agent",
+                "lark_doc": "reporter",
+            }
+            # 工具 → 执行函数映射表
+            tool_map = {
+                "lark_calendar": (self._tools["lark_calendar"]["instance"], "agenda"),
+                "lark_base": (self._tools["lark_base"]["instance"], "records"),
+                "lark_contact": (self._tools["lark_contact"]["instance"], "search"),
+                "web_search": (self._tools["web_search"]["instance"], "execute"),
+                "page_fetch": (self._tools["page_fetch"]["instance"], "execute"),
+                "lark_doc": (self._doc, "create"),
+            }
+
+            owner = tool_owner_map.get(target)
+            tool_info = tool_map.get(target)
+            if not owner or not tool_info:
                 entry["status"] = "error"
                 entry["error"] = f"未知工具: {target}"
+                return entry
+
+            tool_instance, default_action = tool_info
+            try:
+                params = step.get("params", {})
+                action = params.get("action", default_action)
+
+                # 调用网关权限校验
+                await self.call_mcp_tool(
+                    tool_name=target, tool_owner=owner,
+                    tool_args=params, task_id=task_id, reason=step.get("reason", ""),
+                )
+
+                # 执行实际工具调用
+                if target == "lark_doc":
+                    entry["output"] = await tool_instance.execute(
+                        action, title=params.get("title", ""), content=params.get("content", ""))
+                elif target in ("web_search", "page_fetch"):
+                    entry["output"] = await tool_instance.execute(params.get("query", instruction))
+                elif target == "lark_calendar":
+                    entry["output"] = await tool_instance.execute(action)
+                elif target == "lark_base":
+                    entry["output"] = await tool_instance.execute(action, table_id=params.get("table_id", "query"))
+                elif target == "lark_contact":
+                    entry["output"] = await tool_instance.execute(action, keyword=params.get("keyword", instruction))
+
+                entry["status"] = "allowed"
+
+                # 越权拦截检测
+                if isinstance(entry.get("output"), dict) and "denied" in str(entry["output"]).lower() and "error" in str(entry["output"]).lower():
+                    entry["security_event"] = {"event": "越权拦截", "detail": f"{target} 调用被拒绝", "result": str(entry["output"])}
+
+            except PermissionDeniedError as e:
+                entry["status"] = "denied"
+                entry["error"] = str(e)
+                # 如果被拒绝的原因是 explicitly_denied，标记安全事件
+                if "explicitly_denied" in str(e) or "denied" in str(e):
+                    entry["security_event"] = {"event": "越权拦截", "detail": f"{target} 被 deny 令牌阻止", "result": str(e)}
         else:
             entry["status"] = "error"
             entry["error"] = f"未知类型: {t}"

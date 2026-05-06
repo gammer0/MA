@@ -1,5 +1,16 @@
 """飞书 Demo App — FastAPI 入口"""
 import os
+import sys
+from pathlib import Path
+
+# 优先级加载 .env：先尝试项目根目录，再尝试当前目录
+for _env_root in (Path(__file__).resolve().parent.parent, Path(__file__).resolve().parent):
+    _env_path = _env_root / ".env"
+    if _env_path.exists():
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+        break
+
 import uuid
 import asyncio
 from contextlib import asynccontextmanager
@@ -146,6 +157,9 @@ async def execute_task(request: Request):
 
 @app.websocket("/ws/tasks/{task_id}")
 async def ws_task(websocket: WebSocket, task_id: str):
+    if not task_id or task_id == "undefined":
+        await websocket.close(code=4000, reason="Invalid task_id")
+        return
     await websocket.accept()
     _active_ws.setdefault(task_id, []).append(websocket)
     try:
@@ -163,4 +177,4 @@ async def index():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8005)
+    uvicorn.run(app, host="127.0.0.1", port=8005)

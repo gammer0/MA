@@ -36,15 +36,8 @@ class AgentRegistry:
         if not stored:
             return
         # 对已注册但尚未实例化的 Agent 执行注入
-        for name, entry in self._agents.items():
-            key_data = stored.get(name)
-            if key_data and entry["instance"] is None:
-                agent_id = key_data.get("agent_id", "")
-                pk = key_data.get("private_key", "")
-                if agent_id and pk:
-                    kwargs = dict(entry["init_kwargs"])
-                    kwargs.update(agent_id=agent_id, private_key_pem=pk, gateway_url=self._gateway_url)
-                    entry["instance"] = entry["class"](**kwargs)
+        for name in list(self._agents.keys()):
+            self._restore_one_from_disk(name)
 
     def register(self, name: str, agent_class, **init_kwargs):
         self._agents[name] = {
@@ -52,6 +45,27 @@ class AgentRegistry:
             "init_kwargs": init_kwargs,
             "instance": None,
         }
+        # 注册后立即尝试从本地加密文件恢复该 Agent 的密钥
+        self._restore_one_from_disk(name)
+
+    def _restore_one_from_disk(self, name: str):
+        """尝试从本地加密文件恢复单个 Agent 的密钥。"""
+        if not self._key_file:
+            return
+        stored = load_keys(self._key_file, self._salt_file)
+        if not stored:
+            return
+        entry = self._agents.get(name)
+        if not entry or entry["instance"] is not None:
+            return
+        key_data = stored.get(name)
+        if key_data:
+            agent_id = key_data.get("agent_id", "")
+            pk = key_data.get("private_key", "")
+            if agent_id and pk:
+                kwargs = dict(entry["init_kwargs"])
+                kwargs.update(agent_id=agent_id, private_key_pem=pk, gateway_url=self._gateway_url)
+                entry["instance"] = entry["class"](**kwargs)
 
     def get(self, name: str):
         entry = self._agents.get(name)

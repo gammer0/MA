@@ -5,7 +5,12 @@ import httpx
 
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_API_BASE = os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+_raw_model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+# 清洗：去掉 # 注释、空格、以及非模型名的后缀（如中文注释等）
+LLM_MODEL = _raw_model.split("#")[0].strip()
+if LLM_MODEL and not all(c.isascii() for c in LLM_MODEL):
+    # 模型名不应含非 ASCII 字符，提取纯 ASCII 前缀
+    LLM_MODEL = "".join(c for c in LLM_MODEL if c.isascii()).strip()
 
 
 async def chat(prompt: str, system: str = "", max_tokens: int = 1024) -> str:

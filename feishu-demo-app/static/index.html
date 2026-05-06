@@ -67,7 +67,17 @@ async function executeTask() {
       body: JSON.stringify({instruction: document.getElementById('instruction').value})
     });
     const data = await res.json();
+    if (data.error) {
+      addEvent('error', '❌ ' + data.error);
+      btn.disabled = false; btn.textContent = '执行任务';
+      return;
+    }
     const taskId = data.task_id;
+    if (!taskId || taskId === 'undefined') {
+      addEvent('error', '❌ 未获取到有效的 Task ID');
+      btn.disabled = false; btn.textContent = '执行任务';
+      return;
+    }
     addEvent('info', '📋 Task ID: ' + taskId);
     addEvent('info', '任务已启动');
     connectWS(taskId);

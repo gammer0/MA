@@ -86,12 +86,11 @@ class RegisterToolRequest(BaseModel):
 # ============================================================
 
 class RegisterAgentResponse(BaseModel):
-    """Agent 注册响应"""
+    """Agent 注册响应（私钥不返回给管理员，直接注入执行层）"""
     agent_id: str
     agent_name: str
     agent_type: AgentType
-    private_key_pem: str  # 仅此响应中返回
-    message: str = "Agent registered successfully. Store the private key securely."
+    message: str = "Agent registered and private key injected into execution layer."
 
 
 class AgentResponse(BaseModel):

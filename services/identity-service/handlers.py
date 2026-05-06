@@ -3,11 +3,12 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 from redis.asyncio import Redis
 
-from config import DEFAULT_CERT_TTL_DAYS
+from config import DEFAULT_CERT_TTL_DAYS, ADMIN_API_KEY, EXECUTION_LAYER_URL
 from crypto import (
     generate_ed25519_keypair,
     build_session_signature_payload,
@@ -86,7 +87,7 @@ async def handle_register(
     1. 检查是否存在同名同 owner 的 active Agent
     2. 若存在：更新密钥对，返回已有 agent_id + 新私钥
     3. 若不存在：生成新密钥对 + 新 agent_id
-    注意：private_key 仅在此次响应中返回，服务端不存储！
+    4. 私钥推送到执行层 demoapp，成功后丢弃，不返回给管理员
     """
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(days=DEFAULT_CERT_TTL_DAYS)
@@ -122,11 +123,42 @@ async def handle_register(
     ttl_seconds = int((expires_at - now).total_seconds())
     await cache_agent_public_key(redis, agent_id, public_key_pem, ttl_seconds)
 
+    # ================================================================
+    # 推送私钥到执行层（demoapp），成功后丢弃
+    # ================================================================
+    try:
+        payload = {
+            request.agent_name: {
+                "agent_id": agent_id,
+                "private_key": private_key_pem,
+            }
+        }
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{EXECUTION_LAYER_URL}/admin/keys",
+                json=payload,
+                headers={"X-Admin-API-Key": ADMIN_API_KEY},
+            )
+            if resp.status_code != 200:
+                raise httpx.HTTPStatusError(
+                    f"demoapp returned HTTP {resp.status_code}",
+                    request=resp.request,
+                    response=resp,
+                )
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Agent created but failed to inject private key into execution layer "
+                f"({EXECUTION_LAYER_URL}/admin/keys): {exc}. "
+                f"Please ensure demoapp is running and retry registration."
+            ),
+        )
+
     return RegisterAgentResponse(
         agent_id=agent_id,
         agent_name=request.agent_name,
         agent_type=request.agent_type,
-        private_key_pem=private_key_pem,
     )
 
 

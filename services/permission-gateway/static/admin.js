@@ -419,20 +419,27 @@ function resolveEntryLabel(entry) {
 }
 
 function resolveReason(req) {
-  // reason 格式: "Agent {agent_id} 需要权限 [{...}]"
-  // 解析为: "{agent_name} 想要 {意图描述}"
   const agentName = resolveAgentName(req.agent_id);
+  // 优先展示 reason 字段（由 LLM 生成的具体理由）
+  if (req.reason) {
+    return `${agentName}: ${req.reason}`;
+  }
+  // 回退：展示申请的权限条目
   const entries = (req.requested_entries || [])
     .map(e => resolveEntryLabel(e))
     .join('、');
   if (entries) {
     return `${agentName} 想要 ${entries}`;
   }
-  return req.reason || `${agentName} 申请临时权限`;
+  return `${agentName} 申请临时权限`;
 }
 
 async function refreshPendingRequests() {
   try {
+    // 确保 agents 列表已加载（用于解析 agent_id→agent_name）
+    if (agents.length === 0) {
+      try { const r = await fetch('/admin/agents'); agents = await r.json(); } catch(e) {}
+    }
     const r = await fetch('/admin/pending-requests');
     const newRequests = await r.json();
     const el = document.getElementById('pending-list');

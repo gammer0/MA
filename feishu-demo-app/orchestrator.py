@@ -25,24 +25,23 @@ class ReporterAgent(SecureAgentClient):
         self._data_agent = data_agent
         self._search_agent = search_agent
         self._doc = LarkDocTool()
+        self._rebuild_agent_index()
 
-        # 运行前确定的 Agent 和 Tool 清单
+    def _rebuild_agent_index(self):
+        """根据当前 _data_agent / _search_agent 重建 _agents 索引"""
         self._agents = {}
-        if data_agent:
+        if self._data_agent:
             self._agents["data_agent"] = {
-                "instance": data_agent,
-                "agent_id": data_agent.agent_id,
+                "instance": self._data_agent,
+                "agent_id": self._data_agent.agent_id,
                 "desc": "企业数据 Agent，有权访问飞书日历/通讯录/多维表格",
-                "methods": ["query_enterprise_data"],
             }
-        if search_agent:
+        if self._search_agent:
             self._agents["search_agent"] = {
-                "instance": search_agent,
-                "agent_id": search_agent.agent_id,
+                "instance": self._search_agent,
+                "agent_id": self._search_agent.agent_id,
                 "desc": "外部检索 Agent，仅可访问公开网页，无权访问飞书企业数据",
-                "methods": ["search"],
             }
-
         self._tools = {
             "lark_doc": {
                 "instance": self._doc,
@@ -55,9 +54,26 @@ class ReporterAgent(SecureAgentClient):
         result = {"task_id": task_id, "instruction": instruction,
                   "steps": [], "security_events": [], "summary": ""}
 
+        # 重建索引（外部可能在 lifespan 中设置了 data_agent/search_agent）
+        self._rebuild_agent_index()
+
         # 阶段 1: LLM 规划执行计划
         plan = await self._plan(instruction)
         result["plan"] = plan
+
+        # 补齐：如果计划中只有写文档而没有查询数据步骤，自动补充
+        has_data_query = any(
+            s.get("type") == "a2a" and s.get("target") in self._agents
+            for s in plan
+        )
+        if not has_data_query and any(s.get("target") == "lark_doc" for s in plan):
+            # 在前面插入 data_agent 和 search_agent 查询
+            auto_steps = [
+                {"type": "a2a", "target": "data_agent", "reason": "查询飞书企业数据（日历/通讯录/多维表格）", "params": {"query": instruction}},
+                {"type": "a2a", "target": "search_agent", "reason": "搜索外部公开信息", "params": {"query": instruction}},
+            ]
+            plan = auto_steps + plan
+            result["plan"] = plan
 
         # 阶段 2: 逐行执行
         for step in plan:

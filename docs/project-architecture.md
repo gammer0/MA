@@ -47,7 +47,7 @@ MA/
 │   ├── permission-gateway.md                # 权限网关设计
 │   ├── audit-module.md                      # 审计模块设计
 │   ├── project-architecture.md              # 本文档
-│   ├── execution-layer.md                   # 执行层设计
+
 │
 ├── services/                                # 微服务根目录
 │   ├── identity-service/                    # 身份注册服务
@@ -92,12 +92,12 @@ MA/
 │   │   ├── handlers.py, middleware.py
 │   │   └── tests/
 │
-├── demo-app/                                # 独立演示项目（非安全内核部分）
+├── feishu-demo-app/                        # 飞书演示项目（宿主机部署）
 │   ├── Dockerfile, requirements.txt
-│   ├── main.py                              # FastAPI入口(零硬编码,依赖热注入)
+│   ├── main.py                              # FastAPI入口
 │   ├── config.py, orchestrator.py
-│   ├── worker_agents/                       # searcher, analyzer
-│   ├── mcp_tools/                           # 6个Mock工具
+│   ├── worker_agents/                       # data_agent, search_agent
+│   ├── mcp_tools/                           # 6个飞书+搜索工具
 │   ├── agent_sdk/                           # Agent SDK内嵌版
 │   ├── web_ui.py, gateway_client.py
 │   └── static/index.html                    # 演示控制台（四面板）

@@ -718,9 +718,6 @@ async def handle_get_session_view(session_id: str) -> TokenViewResponse:
 async def extract_agent_signature(request: Request) -> SignatureInfo:
     """从请求头提取签名信息。"""
 
-async def admin_api_key_middleware(request: Request, call_next):
-    """管理接口的 API Key 认证中间件。"""
-
 async def service_api_key_middleware(request: Request, call_next):
     """服务间调用的 API Key 认证中间件。"""
 ```

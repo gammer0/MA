@@ -312,10 +312,7 @@ async def handle_get_task_permission_requests(task_id: str) -> list[PermissionRe
 
 ```python
 async def service_api_key_middleware(request: Request, call_next):
-    """服务间调用的 API Key 认证中间件。"""
-
-async def admin_api_key_middleware(request: Request, call_next):
-    """管理查询接口的 API Key 认证中间件。"""
+    """服务间调用的 API Key 认证中间件（写入接口需要）。"""
 ```
 
 ---

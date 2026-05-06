@@ -22,7 +22,7 @@
 | `agent_name` | string | 管理员提交 | 人类可读名称 |
 | `agent_type` | enum: `orchestrator` / `worker` / `tool-proxy` | 管理员提交 | Agent 类型 |
 | `public_key` | string(PEM) | 服务端生成 | Ed25519 公钥 |
-| `private_key` | string(PEM) | 服务端生成，仅返回一次 | Ed25519 私钥，服务端不存储 |
+| `private_key` | string(PEM) | 服务端生成，直接推送执行层后丢弃 | Ed25519 私钥，服务端不存储，管理员不可见 |
 | `owner` | string | 管理员提交 | 归属组织/团队 |
 | `status` | enum: `active` / `revoked` / `expired` | 服务端管理 | 证书状态，软删除 |
 | `issued_at` | datetime | 服务端生成 | 颁发时间 |
@@ -69,9 +69,14 @@
                                     ├── 生成 agent_id (UUID)
                                     ├── 公钥 + 元数据 → PostgreSQL
                                     ├── 公钥 → Redis 缓存
-                                    └── 返回 agent_id + private_key_pem
+                                    ├── 私钥推送 → 执行层 POST /admin/keys
+                                    │   ├── 成功 → 丢弃私钥，返回 agent_id
+                                    │   └── 失败 → 返回 502，提示重试
+                                    └── 返回 agent_id（不含私钥）
 
-管理员 → 将 agent_id + 私钥 + 签名工具部署到 Agent 运行环境
+私钥由身份注册服务直接推送到执行层，管理员全程不接触私钥。
+执行层 AgentRegistry 将私钥加密持久化到本地文件（agent_sdk/keys.enc），
+进程重启后自动恢复。
 ```
 
 ---
@@ -86,7 +91,7 @@
 
 - **有效期**：颁发时设置 `expires_at`（默认 90 天）
 - **吊销**：软删除，标记 `status='revoked'`, `revoked_at=now()`
-- **续期**：管理员调用 `/agents/{agent_id}/renew`，生成新密钥对并返回新私钥
+- **续期**：管理员调用 `/agents/{agent_id}/renew`，生成新密钥对并推送到执行层
 
 ---
 

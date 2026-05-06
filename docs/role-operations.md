@@ -5,7 +5,7 @@
 | 角色 | 身份标识 | 说明 |
 |------|----------|------|
 | **系统开发者** | 持有 Docker/服务器权限 | 负责部署、配置、维护系统基础设施和服务运行 |
-| **权限管理员** | 持有 `ADMIN_API_KEY` | 负责管理 Agent 身份、工具注册、权限令牌、审批权限申请、审计查询 |
+| **权限管理员** | 浏览器访问管理 UI | 负责管理 Agent 身份、工具注册、权限令牌、审批权限申请、审计查询 |
 | **用户** | 浏览器访问 Web UI | 通过自然语言下达任务指令，触发多 Agent 协作 |
 
 ---
@@ -19,14 +19,14 @@
 | 初始化数据库 | PostgreSQL | 容器自动执行 `scripts/init_db.sql` |
 | 配置环境变量 | 全部 | 编辑 `.env`（PG 密码、API Keys） |
 | 部署 Agent SDK | 执行层 | 将 `agent_sdk/` 分发给各 Agent |
-| 查看服务健康 | 全部 | `GET :8001/health`, `:8002/health`, `:8003/health`, `:8004/health` |
+| 查看服务健康 | 全部 | `GET :8001/health`, `:8002/health`, `:8003/health`, `:8005/health` |
 | 查看服务日志 | 全部 | `docker compose logs -f [service]` |
 | 更新服务 | 全部 | `docker compose pull && docker compose up -d` |
 | 备份数据库 | PostgreSQL | `pg_dump > backup.sql` |
 | 恢复数据库 | PostgreSQL | `pg_restore < backup.sql` |
 | 编写/更新执行层 Agent | 执行层 | 新增或修改 Agent 代码和 Tool 实现 |
 | 向管理员移交 Agent-Tool 清单 | 执行层 | 提供当前版本的 Agent 列表和 Tool 列表，供管理员注册 |
-| 执行批量注册 + 凭证注入 | 全部 | `python batch_register.py --manifest agent_tool_manifest.json --api-key "xxx"`（自动注册并注入凭证到执行层） |
+| 执行批量注册 + 凭证注入 | 全部 | `python batch_register.py --manifest agent_tool_manifest.json --url http://localhost:8001`（自动注册并推送私钥到执行层） |
 
 ### 2.1 Agent-Tool 清单移交
 
@@ -53,30 +53,28 @@
 
 > **自动化注册**：管理员拿到清单后，执行 `python scripts/batch_register.py` 一键完成所有 Agent 和 Tool 的注册。
 > 
-> **凭证传递**：注册完成后脚本自动调 `POST /admin/keys` 将私钥直接注入执行层内存，无需中间文件传递。私钥注入后立即清除全局变量（用后即焚）。
->
-> **凭证优先级**：运行时注入 > 环境变量 `AGENT_*_ID` / `AGENT_*_PRIVATE_KEY` > Dockerfile 默认值。
+> **凭证传递**：注册时 identity-service 自动推送私钥到 demoapp，由 AgentRegistry 加密持久化到本地文件。管理员全程不接触私钥。
 
 ---
 
 ## 三、权限管理员操作集
 
-权限管理员通过 `X-Admin-API-Key` 请求头调用管理接口。
+权限管理员通过浏览器访问管理 UI (`http://localhost:8002/admin`) 或调用 API 进行操作。
 
 ### 3.1 身份管理（身份注册服务 :8001）
 
 | 操作 | 方法 | 接口 | 说明 |
 |------|------|------|------|
-| 注册 Agent | `POST` | `/agents/register` | 提交 `agent_name`, `agent_type`, `owner` → 返回 `agent_id` + `private_key_pem` |
+| 注册 Agent | `POST` | `/agents/register` | 提交 `agent_name`, `agent_type`, `owner` → 自动推送私钥到执行层 |
 | 查看 Agent | `GET` | `/agents/{agent_id}` | 查看证书状态、公钥、有效期 |
 | 列出所有 Agent | `GET` | `/agents?status=active` | 可按 status 过滤 |
 | 吊销 Agent | `POST` | `/agents/{agent_id}/revoke` | 软删除，证书立即失效 |
-| 续期 Agent | `POST` | `/agents/{agent_id}/renew` | 生成新密钥对，返回新私钥 |
+| 续期 Agent | `POST` | `/agents/{agent_id}/renew` | 生成新密钥对，推送到执行层 |
 | 注册 MCP 工具 | `POST` | `/tools/register` | 声明 `tool_name`, `tool_owner`, `description` |
 | 查看 MCP 工具 | `GET` | `/tools/{tool_id}` | 查看工具详情 |
 | 列出 MCP 工具 | `GET` | `/tools?owner=public` | 按属主过滤 |
 | 吊销 MCP 工具 | `POST` | `/tools/{tool_id}/revoke` | 软删除 |
-| 批量注册 Agent+Tool | 脚本 | `python batch_register.py --manifest agent_tool_manifest.json` | 一键自动化注册 |
+| 批量注册 Agent+Tool | 脚本 | `python batch_register.py --manifest agent_tool_manifest.json --url http://localhost:8001` | 一键自动化注册 |
 
 ### 3.2 令牌管理（权限网关 :8002）
 

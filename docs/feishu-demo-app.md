@@ -7,8 +7,8 @@
 2. **越权拦截** — 外部检索 Agent 尝试访问飞书企业数据，被 deny 令牌阻止
 
 ### 技术栈
-- **运行环境**: Node.js 18 + Python 3.12（容器内）
-- **飞书 CLI**: `@larksuite/cli` — 封装为 MCP 工具
+| **运行环境**: Python 3.12（宿主机部署）
+| **飞书 CLI**: `lark-cli` — 封装为 MCP 工具
 - **权限对接**: 复用安全内核 3 服务 (identity-service :8001, permission-gateway :8002, audit-service :8003)
 - **Agent SDK**: 内嵌版 (`agent_sdk.py` + `signing_utils.py`)
 

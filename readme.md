@@ -58,9 +58,9 @@ cd docker
 docker compose --env-file ../.env up -d
 ```
 ### 第3步：启动 Demo App：
-   ``sh
+```sh
    cd feishu-demo-app && pip install -r requirements.txt && python main.py
-   ```
+```
    
 等待所有服务 healthy（约 15 秒）：
 

@@ -391,9 +391,7 @@ class MyWorkerAgent(SecureAgentClient):
 
 ```bash
 python scripts/batch_register.py \
-  --manifest scripts/agent_tool_manifest_feishu.json \
-  --api-key admin-secret-key-dev \
-  --url http://localhost:8001
+  --manifest scripts/agent_tool_manifest_feishu.json
 ```
 
 此脚本自动完成 Agent 和 Tool 的注册，并将私钥注入执行层。
